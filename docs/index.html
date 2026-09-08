@@ -6,7 +6,7 @@
     
     <!-- SEO Meta Tags -->
     <title>Killerful.com | Play Free Web Games – Instant Play, No Installs</title>
-    <meta name="description" content="Play the best free web-based games instantly on Killerful.com. No downloads, no installations required—just click and play action, puzzle, and arcade games on mobile or desktop.">
+    <meta name="description" content="Play the best free web-based games instantly on Killerful.com. No downloads, No Ads, no installations required—just click and play action, puzzle, and arcade games on mobile or desktop.">
     <meta name="keywords" content="free web games, browser games, instant play games, no install games, HTML5 games, Killerful">
     <link rel="canonical" href="https://www.killerful.com/">
     
@@ -33,6 +33,28 @@
       }
     }
     </script>
+    <script>  function goToRandomPage() {
+            // 1. List all your local HTML files inside this array
+            const pages = [
+                "Apex Shooter.html",
+                "Baloon Blast.html",
+                "Chess.html",
+                "Duck Hunt.html",
+                "GlassSmasher.html",
+                "Mario.html",
+                "Neon Blitz.html",
+                "Soduku.html",
+                "Space Shooter.html",
+                "zenpendulum.html",
+                "shadowProtocol.html",
+                "neon cyber runner.html",
+                "Velocitydrift"// You can include paths inside subfolders too!
+            ];
+                const randomIndex = Math.floor(Math.random() * pages.length);
+                const chosenPage = pages[randomIndex];
+                window.location.href = chosenPage;} </script>
+              
+
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased">
 
@@ -48,7 +70,8 @@
                 <a href="#instant" class="hover:text-rose-500 transition">Instant Play</a>
             </nav>
             <div>
-                <button class="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-rose-600/20 active:scale-95">
+                
+                <button onclick="goToRandomPage()" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-rose-600/20 active:scale-95">
                     Random Game
                 </button>
             </div>
@@ -62,10 +85,10 @@
         <section class="relative px-4 py-12 sm:py-20 max-w-7xl mx-auto text-center">
             <div class="max-w-3xl mx-auto space-y-6">
                 <span class="inline-block bg-rose-500/10 text-rose-400 text-xs sm:text-sm font-semibold px-3 py-1 rounded-full border border-rose-500/20">
-                    ⚡ Zero Downloads • 100% Free Browser Games
+                    ⚡ Zero Downloads • 100% Ads Free Browser Games
                 </span>
                 <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-tight">
-                    Instant Play. No Installs. <span class="text-rose-500">Pure Gaming.</span>
+                    Instant Play. No ads,  No Installs. <span class="text-rose-500">Pure Gaming.</span>
                 </h1>
                 <p class="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto">
                     Welcome to <strong class="text-slate-200">Killerful.com</strong>, your ultimate destination for lightning-fast, web-based games. Jump straight into action, puzzles, and arcade hits right from your mobile or desktop browser.
@@ -94,15 +117,16 @@
                 <!-- Game Card 1 -->
                 <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
                     <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
-                        <span class="text-slate-600 font-bold group-hover:scale-105 transition duration-300">Thumbnail</span>
+                    <img src="mario.jpg" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
+            
                         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">Play Now</span>
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="Mario.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
                         </div>
                     </div>
                     <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
                         <div>
                             <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
-                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Neon Cyber Runner</h3>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Mario Jump</h3>
                         </div>
                         <span class="text-xs text-slate-400 mt-2">12.4k plays</span>
                     </div>
@@ -111,15 +135,15 @@
                 <!-- Game Card 2 -->
                 <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
                     <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
-                        <span class="text-slate-600 font-bold group-hover:scale-105 transition duration-300">Thumbnail</span>
+                        <img src="neon.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
                         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">Play Now</span>
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="Neon Blitz.html" target="_blank" rel="noopener noreferrer">Play Now</a></span>
                         </div>
                     </div>
                     <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
                         <div>
-                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Puzzle</span>
-                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Quantum Stack</h3>
+                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Neon Blitz</h3>
                         </div>
                         <span class="text-xs text-slate-400 mt-2">8.9k plays</span>
                     </div>
@@ -128,15 +152,15 @@
                 <!-- Game Card 3 -->
                 <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
                     <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
-                        <span class="text-slate-600 font-bold group-hover:scale-105 transition duration-300">Thumbnail</span>
+                    <img src="Duck.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
                         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">Play Now</span>
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="Duck Hunt.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
                         </div>
                     </div>
                     <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
                         <div>
                             <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Arcade</span>
-                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Velocity Drift</h3>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Duck Hunt</h3>
                         </div>
                         <span class="text-xs text-slate-400 mt-2">15.1k plays</span>
                     </div>
@@ -145,19 +169,95 @@
                 <!-- Game Card 4 -->
                 <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
                     <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
-                        <span class="text-slate-600 font-bold group-hover:scale-105 transition duration-300">Thumbnail</span>
+                      <img src="glasssmash.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
                         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md">Play Now</span>
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="GlassSmasher.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
                         </div>
                     </div>
                     <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
                         <div>
-                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Strategy</span>
-                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Tower Tactics</h3>
+                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Glass Smasher</h3>
                         </div>
                         <span class="text-xs text-slate-400 mt-2">6.3k plays</span>
                     </div>
                 </div>
+
+                  <!-- Game Card 5 -->
+                <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
+                    <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
+                    <img src="Velocity.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
+            
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="Velocitydrift.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
+                        </div>
+                    </div>
+                    <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
+                        <div>
+                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Velocity Drift</h3>
+                        </div>
+                        <span class="text-xs text-slate-400 mt-2">8.0k plays</span>
+                    </div>
+                </div>
+
+                    <!-- Game Card 6 -->
+                <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
+                    <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
+                    <img src="shadow.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
+            
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="shadowProtocol.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
+                        </div>
+                    </div>
+                    <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
+                        <div>
+                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Shadow Protocol</h3>
+                        </div>
+                        <span class="text-xs text-slate-400 mt-2">12.4k plays</span>
+                    </div>
+                </div>
+              
+
+
+                  <!-- Game Card 7 -->
+                <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
+                    <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
+                    <img src="neon cyber.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
+            
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="neon cyber runner.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
+                        </div>
+                    </div>
+                    <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
+                        <div>
+                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Neon Cyber</h3>
+                        </div>
+                        <span class="text-xs text-slate-400 mt-2">15k plays</span>
+                    </div>
+                </div>
+
+                  <!-- Game Card 6 -->
+                <div class="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-rose-500/50 transition flex flex-col">
+                    <div class="aspect-video bg-slate-800 relative overflow-hidden flex items-center justify-center">
+                    <img src="baloon.png" alt="Quantum Stack" class="w-full h-full object-cover group-hover:scale-105 transition-300">
+            
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                            <span class="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md"><a href="Baloon Blast.html" target="_blank" rel="noopener noreferrer" >Play Now</a></span>
+                        </div>
+                    </div>
+                    <div class="p-3 sm:p-4 flex flex-col flex-grow justify-between">
+                        <div>
+                            <span class="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">Action</span>
+                            <h3 class="font-bold text-sm sm:text-base text-slate-100 truncate mt-0.5">Baloon Blast</h3>
+                        </div>
+                        <span class="text-xs text-slate-400 mt-2">21.3k plays</span>
+                    </div>
+                </div>
+   
+
             </div>
         </section>
 

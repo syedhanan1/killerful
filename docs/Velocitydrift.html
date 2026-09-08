@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- SEO Meta Tags -->
+    <title>Play Velocity Drift Free Online | Killerful.com</title>
+    <meta name="description" content="Play Velocity Drift instantly on Killerful.com. Experience intense mobile-first arcade racing, sharp cornering, and high-speed drifting right in your browser. No downloads!">
+    <meta name="keywords" content="Velocity Drift game, free browser racing games, HTML5 drift arcade, mobile racing web game, Killerful">
+    <link rel="canonical" href="https://www.killerful.com/games/velocity-drift">
+    
+    <!-- Open Graph / Social SEO -->
+    <meta property="og:title" content="Play Velocity Drift Free Online | Killerful.com">
+    <meta property="og:description" content="Slide through tight cyberpunk turns in Velocity Drift. Play free in your mobile browser with zero app installs.">
+    <meta property="og:url" content="https://www.killerful.com/games/velocity-drift">
+    <meta property="og:type" content="website">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Schema.org Structured Data for SEO -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "Velocity Drift",
+      "url": "https://www.killerful.com/games/velocity-drift",
+      "description": "An action-packed web-based arcade racing game featuring high-speed drifting and obstacle avoidance.",
+      "genre": ["Racing", "Arcade"],
+      "playMode": "SinglePlayer",
+      "applicationCategory": "BrowserGame",
+      "operatingSystem": "All",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
+    <style>
+        html, body {
+            position: fixed;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col justify-between font-sans antialiased">
+
+    <!-- Top Navigation Bar -->
+    <header class="w-full max-w-md mx-auto px-4 py-2 flex justify-between items-center z-10 shrink-0">
+        <a href="/" class="text-base sm:text-lg font-black tracking-wider text-rose-500 uppercase">
+            Killer<span class="text-white">ful</span>
+        </a>
+        <div class="flex space-x-4 text-xs sm:text-sm font-bold tracking-wider">
+            <div>DIST: <span id="scoreVal" class="text-amber-400">0</span>m</div>
+            <div>BEST: <span id="highScoreVal" class="text-rose-400">0</span>m</div>
+        </div>
+    </header>
+
+    <!-- Game Canvas Wrapper -->
+    <main class="w-full flex-grow flex items-center justify-center relative px-2 overflow-hidden">
+        <div class="relative w-full max-w-sm h-full max-h-[500px] bg-slate-900 border-2 border-slate-800 rounded-2xl overflow-hidden shadow-2xl shadow-amber-950/40 flex items-center justify-center">
+            <canvas id="gameCanvas" class="w-full h-full block cursor-pointer"></canvas>
+
+            <!-- Start / Game Over Overlay -->
+            <div id="menuOverlay" class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-20">
+                <span class="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">🏎️ Arcade Drift Racer</span>
+                <h1 class="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2">Velocity Drift</h1>
+                <p id="menuDesc" class="text-xs text-slate-400 mb-5 max-w-[260px]">Use the on-screen steering buttons below to slide your sports car around red concrete highway obstacles.</p>
+                <button id="startBtn" class="bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold text-sm py-3 px-6 rounded-xl shadow-lg shadow-amber-500/40 transition cursor-pointer">
+                    START ENGINE
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Mobile Touch Controls Footer -->
+    <footer class="w-full max-w-md mx-auto p-3 flex flex-col gap-2 z-10 shrink-0">
+        <div class="flex gap-3">
+            <button id="leftBtn" class="flex-1 bg-slate-900 active:bg-amber-500/30 border border-slate-800 active:border-amber-500 text-white font-black py-3.5 rounded-xl text-xl transition shadow-md select-none cursor-pointer">
+                ◀ DRIFT LEFT
+            </button>
+            <button id="rightBtn" class="flex-1 bg-slate-900 active:bg-amber-500/30 border border-slate-800 active:border-amber-500 text-white font-black py-3.5 rounded-xl text-xl transition shadow-md select-none cursor-pointer">
+                DRIFT RIGHT ▶
+            </button>
+        </div>
+        <div class="text-center text-[10px] text-slate-500">
+            Playing on <a href="/" class="text-slate-400 underline hover:text-slate-300">Killerful.com</a> – Free No-Install Browser Games
+        </div>
+    </footer>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const scoreVal = document.getElementById('scoreVal');
+        const highScoreVal = document.getElementById('highScoreVal');
+        const menuOverlay = document.getElementById('menuOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const menuDesc = document.getElementById('menuDesc');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+
+        let highScore = localStorage.getItem('velocity_highScore') || 0;
+        highScoreVal.textContent = highScore;
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let gameRunning = false;
+        let score = 0;
+        let obstacles = [];
+        let particles = [];
+        let frameCount = 0;
+        let speed = 6;
+
+        let car = {
+            x: 0,
+            y: 0,
+            width: 32,
+            height: 56,
+            vx: 0,
+            angle: 0
+        };
+
+        let steerLeft = false;
+        let steerRight = false;
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            speed = 6;
+            obstacles = [];
+            particles = [];
+            frameCount = 0;
+            scoreVal.textContent = score;
+            menuOverlay.classList.add('hidden');
+
+            car.x = canvas.clientWidth / 2;
+            car.y = canvas.clientHeight - 110;
+            car.vx = 0;
+            car.angle = 0;
+        }
+
+        function spawnObstacle() {
+            const logicalWidth = canvas.clientWidth;
+            const minWidth = 65;
+            const maxWidth = logicalWidth * 0.45;
+            const width = Math.random() * (maxWidth - minWidth) + minWidth;
+            const x = Math.random() * (logicalWidth - width - 20) + 10;
+
+            obstacles.push({
+                x: x,
+                y: -70,
+                width: width,
+                height: 24
+            });
+        }
+
+        function createTireSmoke(x, y) {
+            for (let i = 0; i < 2; i++) {
+                particles.push({
+                    x: x + (Math.random() - 0.5) * 16,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 1.5,
+                    vy: Math.random() * 2 + 1,
+                    alpha: 0.7,
+                    size: Math.random() * 5 + 3
+                });
+            }
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                localStorage.setItem('velocity_highScore', highScore);
+                highScoreVal.textContent = highScore;
+            }
+            menuDesc.innerHTML = `Wrecked! Total Distance: <span class="text-white font-bold">${Math.floor(score)}m</span>`;
+            startBtn.textContent = 'RETRY DRIFT';
+            menuOverlay.classList.remove('hidden');
+        }
+
+        const bindHoldEvent = (btn, isLeft) => {
+            const startAction = (e) => { e.preventDefault(); if (isLeft) steerLeft = true; else steerRight = true; };
+            const endAction = (e) => { e.preventDefault(); if (isLeft) steerLeft = false; else steerRight = false; };
+            
+            btn.addEventListener('pointerdown', startAction);
+            btn.addEventListener('pointerup', endAction);
+            btn.addEventListener('pointerleave', endAction);
+        };
+
+        bindHoldEvent(leftBtn, true);
+        bindHoldEvent(rightBtn, false);
+
+        window.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') steerRight = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') steerRight = false;
+        });
+
+        startBtn.addEventListener('click', startGame);
+
+        function update() {
+            if (!gameRunning) return;
+
+            frameCount++;
+            score += 0.5;
+            scoreVal.textContent = Math.floor(score);
+
+            speed = 6 + Math.floor(score / 200) * 0.7;
+
+            if (frameCount % Math.max(25, Math.floor(55 - speed * 1.5)) === 0) {
+                spawnObstacle();
+            }
+
+            const targetVx = steerLeft ? -6.5 : (steerRight ? 6.5 : 0);
+            car.vx += (targetVx - car.vx) * 0.2;
+            car.x += car.vx;
+
+            // Tilt angle responsive to steering for arcade feel
+            const targetAngle = car.vx * 0.04;
+            car.angle += (targetAngle - car.angle) * 0.2;
+
+            const logicalWidth = canvas.clientWidth;
+            if (car.x < 12) { car.x = 12; car.vx = 0; }
+            if (car.x > logicalWidth - 12 - car.width) { car.x = logicalWidth - 12 - car.width; car.vx = 0; }
+
+            if (Math.abs(car.vx) > 1.5) {
+                createTireSmoke(car.x + car.width / 2, car.y + car.height);
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].y += speed;
+
+                if (
+                    car.x < obstacles[i].x + obstacles[i].width &&
+                    car.x + car.width > obstacles[i].x &&
+                    car.y < obstacles[i].y + obstacles[i].height &&
+                    car.y + car.height > obstacles[i].y
+                ) {
+                    gameOver();
+                }
+
+                if (obstacles[i].y > canvas.clientHeight) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].x += particles[i].vx;
+                particles[i].y += particles[i].vy;
+                particles[i].alpha -= 0.03;
+                particles[i].size += 0.15;
+                if (particles[i].alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawCar() {
+            ctx.save();
+            ctx.translate(car.x + car.width / 2, car.y + car.height / 2);
+            ctx.rotate(car.angle);
+
+            // Car Body Shadow / Glow
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = '#f59e0b';
+
+            // Main Chassis (Sleek Red Sports Car)
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.roundRect(-car.width / 2, -car.height / 2, car.width, car.height, 8);
+            ctx.fill();
+
+            // Roof / Cabin
+            ctx.fillStyle = '#b91c1c';
+            ctx.beginPath();
+            ctx.roundRect(-car.width / 2 + 4, -car.height / 4, car.width - 8, car.height / 2, 4);
+            ctx.fill();
+
+            // Windshield & Rear window
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(-car.width / 2 + 6, -car.height / 4 + 2, car.width - 12, 10);
+            ctx.fillRect(-car.width / 2 + 6, car.height / 4 - 8, car.width - 12, 6);
+
+            // Headlights
+            ctx.fillStyle = '#fde047';
+            ctx.fillRect(-car.width / 2 + 3, -car.height / 2, 5, 3);
+            ctx.fillRect(car.width / 2 - 8, -car.height / 2, 5, 3);
+
+            // Taillights
+            ctx.fillStyle = '#f87171';
+            ctx.fillRect(-car.width / 2 + 3, car.height / 2 - 3, 5, 3);
+            ctx.fillRect(car.width / 2 - 8, car.height / 2 - 3, 5, 3);
+
+            // Wheels
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(-car.width / 2 - 3, -car.height / 3, 3, 12);
+            ctx.fillRect(car.width / 2, -car.height / 3, 3, 12);
+            ctx.fillRect(-car.width / 2 - 3, car.height / 4, 3, 12);
+            ctx.fillRect(car.width / 2, car.height / 4, 3, 12);
+
+            ctx.restore();
+        }
+
+        function draw() {
+            const logicalWidth = canvas.clientWidth;
+            const logicalHeight = canvas.clientHeight;
+
+            ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+            // Asphalt Background
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+
+            // Center lane markers
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([24, 24]);
+            const lineOffset = (frameCount * speed) % 48;
+
+            ctx.beginPath();
+            ctx.moveTo(logicalWidth / 3, -48 + lineOffset);
+            ctx.lineTo(logicalWidth / 3, logicalHeight);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo((logicalWidth / 3) * 2, -48 + lineOffset);
+            ctx.lineTo((logicalWidth / 3) * 2, logicalHeight);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Road side shoulders/curbs
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, 12, logicalHeight);
+            ctx.fillRect(logicalWidth - 12, 0, 12, logicalHeight);
+
+            // Draw Tire Smoke / Drift Particles
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Draw Highway Obstacles (Barricades)
+            obstacles.forEach(obs => {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#dc2626';
+                ctx.fillStyle = '#dc2626';
+                ctx.beginPath();
+                ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 4);
+                ctx.fill();
+                // Hazard stripes pattern detail
+                ctx.fillStyle = '#fef08a';
+                for (let wx = obs.x + 8; wx < obs.x + obs.width - 8; wx += 20) {
+                    ctx.fillRect(wx, obs.y + 4, 8, obs.height - 8);
+                }
+                ctx.restore();
+            });
+
+            // Draw Detailed Car
+            drawCar();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>

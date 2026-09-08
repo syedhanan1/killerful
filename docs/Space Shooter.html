@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Nebula Striker - High-Graphics Space Shooter</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            overscroll-behavior: none;
+            background: #020205;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-center items-center overflow-hidden fixed touch-none font-sans text-white">
+
+    <!-- Game Container -->
+    <div id="game-container" class="relative shadow-[0_0_60px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="ui" class="absolute top-4 left-6 right-6 flex justify-between items-center pointer-events-none text-base font-black tracking-wider z-10 drop-shadow-md">
+            <div class="flex gap-6 items-center">
+                <div id="score-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-cyan-400">SCORE: 0</div>
+                <div id="lives-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-rose-500">SHIELDS: ❤️❤️❤️</div>
+            </div>
+            <div class="flex gap-4 items-center">
+                <div id="wave-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-amber-400">SECTOR: 1</div>
+                <button class="pointer-events-auto bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer" onclick="resetGame()">RESET</button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 bg-[#020205]/95 backdrop-blur-2xl flex flex-col justify-center items-center text-center z-20 p-6">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.15)_0,transparent_70%)] pointer-events-none"></div>
+            <h1 class="text-5xl font-black mb-3 bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-500 bg-clip-text text-transparent tracking-widest drop-shadow-[0_5px_20px_rgba(56,189,248,0.4)]">NEBULA STRIKER</h1>
+            <p class="text-xs text-slate-400 max-w-md mb-8 leading-relaxed uppercase tracking-widest font-semibold">Cinematic High-Graphics Space Combat • Mobile Landscape Optimized</p>
+            <button class="bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 text-slate-950 font-black py-4 px-10 text-lg rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_0_35px_rgba(56,189,248,0.5)] uppercase tracking-wider" onclick="startGame()">Launch Fighter</button>
+        </div>
+    </div>
+
+    <!-- Landscape Warning Overlay for Portrait Mobile Users -->
+    <div id="orientation-warning" class="fixed inset-0 bg-[#020205] z-50 hidden flex-col justify-center items-center text-center p-6">
+        <div class="text-5xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-xl font-black tracking-wider mb-2 text-cyan-400">PLEASE ROTATE YOUR DEVICE</h2>
+        <p class="text-xs text-slate-400 max-w-xs leading-relaxed">This cinematic space shooter is engineered strictly for landscape orientation for maximum graphical immersion and touch responsiveness.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        let score = 0;
+        let lives = 3;
+        let wave = 1;
+        let gameState = 'START';
+        let lastTime = 0;
+
+        let playerX = 120;
+        let playerY = HEIGHT / 2;
+        let targetPlayerY = HEIGHT / 2;
+        let playerVelocityY = 0;
+
+        let bullets = [];
+        let enemies = [];
+        let enemyBullets = [];
+        let particles = [];
+        let stars = [];
+
+        class Star {
+            constructor() {
+                this.x = Math.random() * WIDTH;
+                this.y = Math.random() * HEIGHT;
+                this.size = Math.random() * 2;
+                this.speed = 1 + Math.random() * 4;
+            }
+            update() {
+                this.x -= this.speed;
+                if (this.x < 0) {
+                    this.x = WIDTH;
+                    this.y = Math.random() * HEIGHT;
+                }
+            }
+            draw() {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+            }
+        }
+
+        class Bullet {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.speed = 14;
+                this.radius = 4;
+            }
+            update() {
+                this.x += this.speed;
+            }
+            draw() {
+                ctx.save();
+                ctx.fillStyle = '#38bdf8';
+                ctx.shadowColor = '#38bdf8';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class EnemyBullet {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.speed = 7;
+                this.radius = 5;
+            }
+            update() {
+                this.x -= this.speed;
+            }
+            draw() {
+                ctx.save();
+                ctx.fillStyle = '#f43f5e';
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Enemy {
+            constructor() {
+                this.x = WIDTH + 50;
+                this.y = 50 + Math.random() * (HEIGHT - 100);
+                this.radius = 22;
+                this.speed = 2 + Math.random() * 2 + (wave * 0.5);
+                this.shootTimer = Math.random() * 60;
+            }
+            update() {
+                this.x -= this.speed;
+                this.shootTimer++;
+                if (this.shootTimer > 90) {
+                    this.shootTimer = 0;
+                    enemyBullets.push(new EnemyBullet(this.x - 15, this.y));
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                // Enemy ship body glow
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 20;
+
+                // Wings
+                ctx.fillStyle = '#881337';
+                ctx.beginPath();
+                ctx.moveTo(15, 0);
+                ctx.lineTo(-15, -25);
+                ctx.lineTo(-5, 0);
+                ctx.lineTo(-15, 25);
+                ctx.closePath();
+                ctx.fill();
+
+                // Main hull
+                let hullGrad = ctx.createLinearGradient(-20, 0, 20, 0);
+                hullGrad.addColorStop(0, '#4c0519');
+                hullGrad.addColorStop(1, '#f43f5e');
+                ctx.fillStyle = hullGrad;
+                ctx.beginPath();
+                ctx.moveTo(20, 0);
+                ctx.lineTo(-15, -10);
+                ctx.lineTo(-20, 0);
+                ctx.lineTo(-15, 10);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                let angle = Math.random() * Math.PI * 2;
+                let speed = 2 + Math.random() * 6;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1.0;
+                this.decay = 0.03 + Math.random() * 0.03;
+                this.size = 2 + Math.random() * 4;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function requestFullscreenAndLockLandscape() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        }
+
+        function checkOrientation() {
+            const warning = document.getElementById('orientation-warning');
+            if (window.innerHeight > window.innerWidth && window.innerWidth < 900) {
+                warning.classList.remove('hidden');
+                warning.classList.add('flex');
+            } else {
+                warning.classList.remove('flex');
+                warning.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('resize', checkOrientation);
+        window.addEventListener('orientationchange', checkOrientation);
+
+        function startGame() {
+            requestFullscreenAndLockLandscape();
+            document.getElementById('start-screen').classList.add('hidden');
+            
+            // Init starfield
+            stars = [];
+            for(let i=0; i<100; i++) stars.push(new Star());
+
+            resetGame();
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            wave = 1;
+            bullets = [];
+            enemies = [];
+            enemyBullets = [];
+            particles = [];
+            playerY = HEIGHT / 2;
+            targetPlayerY = HEIGHT / 2;
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handlePointerMove(clientY, rect) {
+            const scaleY = HEIGHT / rect.height;
+            targetPlayerY = (clientY - rect.top) * scaleY;
+            targetPlayerY = Math.max(30, Math.min(HEIGHT - 30, targetPlayerY));
+        }
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            handlePointerMove(e.clientY, rect);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameState !== 'PLAYING') return;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            handlePointerMove(touch.clientY, rect);
+            e.preventDefault();
+        }, { passive: false });
+
+        // Auto-firing cannon loop
+        setInterval(() => {
+            if (gameState === 'PLAYING') {
+                bullets.push(new Bullet(playerX + 25, playerY));
+            }
+        }, 180);
+
+        function updateUI() {
+            document.getElementById('score-display').innerText = `SCORE: ${score}`;
+            document.getElementById('wave-display').innerText = `SECTOR: ${wave}`;
+            let hearts = '❤️'.repeat(Math.max(0, lives));
+            document.getElementById('lives-display').innerText = `SHIELDS: ${hearts}`;
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            let deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Smooth spaceship tracking
+            let dy = targetPlayerY - playerY;
+            playerY += dy * 0.15;
+
+            // Spawn enemies dynamically
+            if (Math.random() < 0.025 + (wave * 0.005)) {
+                enemies.push(new Enemy());
+            }
+
+            // Update starfield
+            stars.forEach(s => s.update());
+
+            // Update bullets
+            bullets.forEach((b, index) => {
+                b.update();
+                if (b.x > WIDTH) bullets.splice(index, 1);
+            });
+
+            // Update enemy bullets
+            enemyBullets.forEach((eb, index) => {
+                eb.update();
+                // Check collision with player
+                let dist = Math.hypot(playerX - eb.x, playerY - eb.y);
+                if (dist < 25) {
+                    lives--;
+                    enemyBullets.splice(index, 1);
+                    updateUI();
+                    for (let p = 0; p < 15; p++) {
+                        particles.push(new Particle(playerX, playerY, '#38bdf8'));
+                    }
+                    if (lives <= 0) {
+                        gameState = 'GAMEOVER';
+                    }
+                } else if (eb.x < 0) {
+                    enemyBullets.splice(index, 1);
+                }
+            });
+
+            // Update enemies & check collisions
+            enemies.forEach((e, eIndex) => {
+                e.update();
+
+                // Check collision with player ship
+                let pDist = Math.hypot(playerX - e.x, playerY - e.y);
+                if (pDist < 35) {
+                    lives--;
+                    enemies.splice(eIndex, 1);
+                    updateUI();
+                    for (let p = 0; p < 25; p++) {
+                        particles.push(new Particle(e.x, e.y, '#f43f5e'));
+                    }
+                    if (lives <= 0) gameState = 'GAMEOVER';
+                    return;
+                }
+
+                // Check bullet collisions
+                bullets.forEach((b, bIndex) => {
+                    let hitDist = Math.hypot(b.x - e.x, b.y - e.y);
+                    if (hitDist < e.radius + b.radius) {
+                        score += 100;
+                        if (score >= wave * 1000) wave++;
+                        updateUI();
+
+                        for (let p = 0; p < 20; p++) {
+                            particles.push(new Particle(e.x, e.y, '#f43f5e'));
+                        }
+
+                        enemies.splice(eIndex, 1);
+                        bullets.splice(bIndex, 1);
+                    }
+                });
+
+                if (e.x < -50) {
+                    enemies.splice(eIndex, 1);
+                }
+            });
+
+            particles.forEach(p => p.update());
+            particles = particles.filter(p => p.alpha > 0);
+
+            // Render Frame
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            // Deep space cinematic gradient background
+            let bgGrad = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+            bgGrad.addColorStop(0, '#020205');
+            bgGrad.addColorStop(0.5, '#09091a');
+            bgGrad.addColorStop(1, '#020205');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw Stars
+            stars.forEach(s => s.draw());
+
+            // Draw game entities
+            bullets.forEach(b => b.draw());
+            enemyBullets.forEach(eb => eb.draw());
+            enemies.forEach(e => e.draw());
+            particles.forEach(p => p.draw());
+
+            // Draw High-Graphics Player Fighter Jet
+            ctx.save();
+            ctx.translate(playerX, playerY);
+            
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 25;
+
+            // Wings
+            ctx.fillStyle = '#0369a1';
+            ctx.beginPath();
+            ctx.moveTo(10, 0);
+            ctx.lineTo(-25, -35);
+            ctx.lineTo(-15, 0);
+            ctx.lineTo(-25, 35);
+            ctx.closePath();
+            ctx.fill();
+
+            // Fuselage Body
+            let shipGrad = ctx.createLinearGradient(-30, 0, 30, 0);
+            shipGrad.addColorStop(0, '#0c4a6e');
+            shipGrad.addColorStop(0.5, '#38bdf8');
+            shipGrad.addColorStop(1, '#bae6fd');
+            ctx.fillStyle = shipGrad;
+            ctx.beginPath();
+            ctx.moveTo(35, 0);
+            ctx.lineTo(-15, -10);
+            ctx.lineTo(-30, -4);
+            ctx.lineTo(-30, 4);
+            ctx.lineTo(-15, 10);
+            ctx.closePath();
+            ctx.fill();
+
+            // Cockpit Canopy
+            ctx.fillStyle = '#f8fafc';
+            ctx.beginPath();
+            ctx.ellipse(5, -1, 10, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Engine Plasma Exhaust
+            ctx.fillStyle = '#38bdf8';
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.moveTo(-30, -4);
+            ctx.lineTo(-45 - Math.random() * 12, 0);
+            ctx.lineTo(-30, 4);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+
+            if (gameState === 'GAMEOVER') {
+                ctx.fillStyle = 'rgba(2, 2, 5, 0.9)';
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '900 42px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 20;
+                ctx.fillText('MISSION FAILED', WIDTH / 2, HEIGHT / 2 - 30);
+
+                ctx.font = '700 20px sans-serif';
+                ctx.fillStyle = '#cbd5e1';
+                ctx.shadowBlur = 10;
+                ctx.fillText(`Final Score: ${score}`, WIDTH / 2, HEIGHT / 2 + 15);
+
+                ctx.font = '600 14px sans-serif';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('Tap Reset above to fly again', WIDTH / 2, HEIGHT / 2 + 60);
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initial check on load
+        checkOrientation();
+    </script>
+</body>
+</html>

@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Next-Gen 3D Glossy Neon Dart Blitz</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: #020408;
+            margin: 0;
+            padding: 0;
+            overscroll-behavior: none;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #orientation-prompt {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #020408;
+            z-index: 100;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 24px;
+        }
+        @media screen and (orientation: portrait) and (max-width: 900px) {
+            #orientation-prompt {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body class="bg-[#020408] text-white h-screen w-screen flex flex-col justify-center items-center overflow-hidden fixed touch-none">
+
+    <div id="orientation-prompt">
+        <div class="text-5xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-2xl font-extrabold text-cyan-400 mb-2">Please Rotate Your Device</h2>
+        <p class="text-sm text-slate-400 max-w-xs">Experience Next-Gen 3D Neon Dart Blitz in immersive full-screen landscape mode.</p>
+    </div>
+
+    <div id="game-container" class="relative shadow-[0_35px_100px_rgba(0,0,0,0.95)] rounded-3xl overflow-hidden bg-[#050814] border border-cyan-500/40">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        
+        <div id="ui" class="absolute top-4 left-6 right-6 flex justify-between items-center pointer-events-none text-sm font-bold tracking-wide z-10 text-slate-200">
+            <div class="flex gap-6 items-center">
+                <div id="score-display" class="drop-shadow-[0_0_12px_rgba(0,243,255,0.7)] text-cyan-300 font-extrabold text-base">SCORE: 0</div>
+                <div id="level-display" class="drop-shadow-[0_0_12px_rgba(168,85,247,0.7)] text-purple-300 font-extrabold text-base">LEVEL: 1</div>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-xs tracking-wider text-slate-300">CORE ENERGY:</span>
+                <div class="w-36 h-3.5 bg-slate-900/90 rounded-full overflow-hidden border border-cyan-500/50 p-0.5 shadow-inner">
+                    <div id="energy-bar" class="h-full bg-gradient-to-r from-cyan-500 to-[#00f3ff] rounded-full transition-all duration-150 shadow-[0_0_12px_#00f3ff]" style="width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="start-screen" class="absolute inset-0 bg-[#020408]/95 backdrop-blur-2xl flex flex-col justify-center items-center text-center z-20 p-6">
+            <h1 class="text-5xl font-extrabold mb-3 bg-gradient-to-r from-white via-cyan-300 to-purple-500 bg-clip-text text-transparent tracking-wider drop-shadow-[0_0_35px_rgba(0,243,255,0.6)]">NEON DART BLITZ 3D</h1>
+            <p class="text-sm text-slate-300 max-w-md mb-8 leading-relaxed">Dynamic 3D volumetric glass targets, radiant cyber spacefields, and responsive touch controls.</p>
+            <button class="bg-gradient-to-r from-cyan-500 via-[#00f3ff] to-purple-600 text-slate-950 border-none py-4 px-10 text-base font-extrabold rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_0_40px_rgba(0,243,255,0.7)]" onclick="startGame()">START BLITZ</button>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const STATE = { START: 1, PLAYING: 2, GAMEOVER: 3 };
+let currentState = STATE.START;
+
+let score = 0;
+let energy = 100;
+let level = 1;
+let gameTimer = 0;
+let screenShakeTimer = 0;
+
+const launcher = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    radius: 42,
+    angle: 0
+};
+
+let isDragging = false;
+let dragCurrent = { x: 0, y: 0 };
+let dragStart = { x: 0, y: 0 };
+
+let darts = [];
+let targets = [];
+let particles = [];
+let floatTexts = [];
+let targetSpawnTimer = 0;
+
+// Animated background starfield & nebula dust particles
+let bgStars = [];
+for (let i = 0; i < 70; i++) {
+    bgStars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2.2 + 0.5,
+        alpha: Math.random() * 0.7 + 0.3,
+        twinkleSpeed: Math.random() * 0.04 + 0.01
+    });
+}
+
+function requestFullscreenAndLockLandscape() {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+    } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+    }
+
+    if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+    }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+    if (currentState === STATE.START || currentState === STATE.GAMEOVER) return;
+    if (currentState === STATE.PLAYING && energy > 5) {
+        const rect = canvas.getBoundingClientRect();
+        isDragging = true;
+        dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        dragCurrent = { x: dragStart.x, y: dragStart.y };
+    }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const currX = e.clientX - rect.left;
+    const currY = e.clientY - rect.top;
+
+    if (isDragging) {
+        dragCurrent.x = currX;
+        dragCurrent.y = currY;
+        const dx = dragCurrent.x - dragStart.x;
+        const dy = dragCurrent.y - dragStart.y;
+        if (Math.hypot(dx, dy) > 4) {
+            launcher.angle = Math.atan2(dy, dx);
+        }
+    }
+});
+
+canvas.addEventListener('pointerup', () => {
+    if (isDragging) {
+        isDragging = false;
+        const speed = 15;
+        darts.push({
+            x: launcher.x + Math.cos(launcher.angle) * launcher.radius,
+            y: launcher.y + Math.sin(launcher.angle) * launcher.radius,
+            vx: Math.cos(launcher.angle) * speed,
+            vy: Math.sin(launcher.angle) * speed,
+            trail: []
+        });
+
+        energy -= 4;
+        if (energy < 0) energy = 0;
+    }
+});
+
+function startGame() {
+    requestFullscreenAndLockLandscape();
+    document.getElementById('start-screen').classList.add('hidden');
+    currentState = STATE.PLAYING;
+    score = 0;
+    energy = 100;
+    level = 1;
+    gameTimer = 0;
+    darts = [];
+    targets = [];
+    particles = [];
+    floatTexts = [];
+}
+
+function resetGame() {
+    startGame();
+}
+
+function update() {
+    if (currentState === STATE.PLAYING) {
+        gameTimer++;
+
+        if (gameTimer % 20 === 0 && energy < 100) {
+            energy += 1;
+        }
+
+        targetSpawnTimer++;
+        if (targetSpawnTimer >= Math.max(22, 60 - level * 4)) {
+            spawnTarget();
+            targetSpawnTimer = 0;
+        }
+
+        if (screenShakeTimer > 0) screenShakeTimer--;
+
+        // Update Darts
+        for (let i = darts.length - 1; i >= 0; i--) {
+            let d = darts[i];
+            d.trail.push({ x: d.x, y: d.y });
+            if (d.trail.length > 10) d.trail.shift();
+
+            d.x += d.vx;
+            d.y += d.vy;
+
+            if (d.x < 0 || d.x > canvas.width || d.y < 0 || d.y > canvas.height) {
+                darts.splice(i, 1);
+                continue;
+            }
+
+            let hitIndex = -1;
+            for (let j = 0; j < targets.length; j++) {
+                let t = targets[j];
+                const dist = Math.hypot(d.x - t.x, d.y - t.y);
+                if (dist < t.radius + 12) {
+                    hitIndex = j;
+                    break;
+                }
+            }
+
+            if (hitIndex !== -1) {
+                let t = targets[hitIndex];
+                screenShakeTimer = 12;
+
+                if (t.type === 'bullseye') {
+                    score += t.points;
+                    energy = Math.min(100, energy + 12);
+                    create3DGlassExplosion(t.x, t.y, '#00f3ff', 35);
+                    addFloatText(`+${t.points}`, t.x, t.y, '#00f3ff');
+                } else if (t.type === 'bonus') {
+                    score += t.points;
+                    energy = Math.min(100, energy + 25);
+                    create3DGlassExplosion(t.x, t.y, '#39ff14', 45);
+                    addFloatText(`MEGA +${t.points}`, t.x, t.y, '#39ff14');
+                } else if (t.type === 'hazard') {
+                    score = Math.max(0, score - 40);
+                    energy -= 25;
+                    create3DGlassExplosion(t.x, t.y, '#ff0055', 40);
+                    addFloatText(`-40 PENALTY`, t.x, t.y, '#ff0055');
+                    if (energy <= 0) triggerGameOver();
+                }
+
+                targets.splice(hitIndex, 1);
+                darts.splice(i, 1);
+            }
+        }
+
+        // Update Targets
+        for (let i = targets.length - 1; i >= 0; i--) {
+            let t = targets[i];
+            const angleToLauncher = Math.atan2(launcher.y - t.y, launcher.x - t.x);
+            t.x += Math.cos(angleToLauncher) * t.speed;
+            t.y += Math.sin(angleToLauncher) * t.speed;
+            t.rotation += t.vRot;
+
+            const distToCore = Math.hypot(launcher.x - t.x, launcher.y - t.y);
+            if (distToCore < launcher.radius + 14) {
+                energy -= t.type === 'hazard' ? 15 : 20;
+                screenShakeTimer = 16;
+                create3DGlassExplosion(t.x, t.y, '#ff0055', 25);
+                targets.splice(i, 1);
+                
+                if (energy <= 0) {
+                    energy = 0;
+                    triggerGameOver();
+                }
+            }
+        }
+
+        // Update Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.2;
+            p.rot += p.vrot;
+            p.alpha -= 0.022;
+            if (p.alpha <= 0) particles.splice(i, 1);
+        }
+
+        // Update Floating Texts
+        for (let i = floatTexts.length - 1; i >= 0; i--) {
+            let ft = floatTexts[i];
+            ft.y -= 1.6;
+            ft.alpha -= 0.025;
+            if (ft.alpha <= 0) floatTexts.splice(i, 1);
+        }
+
+        level = Math.floor(score / 350) + 1;
+        updateUI();
+    }
+}
+
+function triggerGameOver() {
+    currentState = STATE.GAMEOVER;
+    const startScreen = document.getElementById('start-screen');
+    startScreen.classList.remove('hidden');
+    startScreen.innerHTML = `
+        <h1 class="text-5xl font-extrabold mb-3 text-rose-500 tracking-wider drop-shadow-[0_0_35px_rgba(255,0,85,0.7)]">CORE BREACHED</h1>
+        <p class="text-lg text-slate-200 mb-2">Final Score: <span class="text-cyan-400 font-bold">${score}</span> | Level: <span class="text-purple-400 font-bold">${level}</span></p>
+        <p class="text-xs text-slate-400 max-w-sm mb-8 leading-relaxed">Your energy core succumbed to cyber anomalies.</p>
+        <button class="bg-gradient-to-r from-cyan-500 to-[#00f3ff] text-slate-950 border-none py-4 px-10 text-base font-extrabold rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_0_40px_rgba(0,243,255,0.7)]" onclick="resetGame()">PLAY AGAIN</button>
+    `;
+}
+
+function spawnTarget() {
+    const side = Math.floor(Math.random() * 4);
+    let x, y;
+    if (side === 0) { x = Math.random() * canvas.width; y = -45; }
+    else if (side === 1) { x = canvas.width + 45; y = Math.random() * canvas.height; }
+    else if (side === 2) { x = Math.random() * canvas.width; y = canvas.height + 45; }
+    else { x = -45; y = Math.random() * canvas.height; }
+
+    const randType = Math.random();
+    let type = 'bullseye';
+    let color = '#00f3ff';
+    let points = 50;
+    let radius = 26;
+    let speed = 1.25 + level * 0.18;
+
+    if (randType > 0.8) {
+        type = 'bonus';
+        color = '#39ff14';
+        points = 150;
+        radius = 20;
+        speed = 1.85 + level * 0.22;
+    } else if (randType < 0.25) {
+        type = 'hazard';
+        color = '#ff0055';
+        points = 0;
+        radius = 24;
+        speed = 1.5 + level * 0.12;
+    }
+
+    targets.push({
+        x, y, type, color, points, radius, speed,
+        pulse: Math.random() * Math.PI,
+        rotation: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.03
+    });
+}
+
+function create3DGlassExplosion(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 7 + 2;
+        particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 1.5,
+            alpha: 1,
+            color,
+            size: Math.random() * 9 + 4,
+            rot: Math.random() * Math.PI,
+            vrot: (Math.random() - 0.5) * 0.5
+        });
+    }
+}
+
+function addFloatText(text, x, y, color) {
+    floatTexts.push({ text, x, y, alpha: 1, color });
+}
+
+function updateUI() {
+    document.getElementById('score-display').innerText = `SCORE: ${score}`;
+    document.getElementById('level-display').innerText = `LEVEL: ${level}`;
+    document.getElementById('energy-bar').style.width = `${energy}%`;
+}
+
+function draw() {
+    // Stunning 3D Deep Space Nebula Background Gradient
+    let bgGrad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 50, canvas.width / 2, canvas.height / 2, canvas.width * 0.7);
+    bgGrad.addColorStop(0, '#0c102b');
+    bgGrad.addColorStop(0.5, '#050714');
+    bgGrad.addColorStop(1, '#010206');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dynamic Screen Shake Transformation
+    ctx.save();
+    if (screenShakeTimer > 0) {
+        const offsetX = (Math.random() - 0.5) * (screenShakeTimer * 2.0);
+        const offsetY = (Math.random() - 0.5) * (screenShakeTimer * 2.0);
+        ctx.translate(offsetX, offsetY);
+    }
+
+    // Draw Twinkling Starfield & Nebula Particles
+    bgStars.forEach(star => {
+        star.alpha += star.twinkleSpeed;
+        if (star.alpha > 1 || star.alpha < 0.2) star.twinkleSpeed *= -1;
+        ctx.save();
+        ctx.globalAlpha = star.alpha;
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#00f3ff';
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    // 3D Cyber Grid Floor / Tunnel Perspective Lines
+    ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)';
+    ctx.lineWidth = 1;
+    const gridSize = 60;
+    for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+
+    if (currentState === STATE.START || currentState === STATE.GAMEOVER) {
+        ctx.restore();
+        return;
+    }
+
+    // Draw 3D Volumetric Glossy Targets with Realistic Depth & Specular Facets
+    targets.forEach(t => {
+        t.pulse += 0.12;
+        const currentR = t.radius + Math.sin(t.pulse) * 3;
+
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        ctx.rotate(t.rotation);
+
+        // 3D Outer Drop Shadow & Glow
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = t.color;
+
+        // Volumetric Base Disk
+        let diskGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, currentR);
+        diskGrad.addColorStop(0, 'rgba(15, 23, 42, 0.9)');
+        diskGrad.addColorStop(0.7, 'rgba(7, 11, 22, 0.85)');
+        diskGrad.addColorStop(1, t.color);
+        ctx.fillStyle = diskGrad;
+        ctx.strokeStyle = t.color;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, currentR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Inner 3D Ring Frame
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, currentR * 0.65, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Glossy Specular Dome Highlight
+        let domeGrad = ctx.createLinearGradient(-currentR, -currentR, currentR, currentR);
+        domeGrad.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
+        domeGrad.addColorStop(0.3, 'rgba(255, 255, 255, 0.15)');
+        domeGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.0)');
+        ctx.fillStyle = domeGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, currentR - 1, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (t.type === 'hazard') {
+            ctx.fillStyle = t.color;
+            ctx.font = 'bold 18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('✕', 0, 0);
+        }
+        ctx.restore();
+    });
+
+    // Draw 3D Dynamic Darts & Luminous Trails
+    darts.forEach(d => {
+        ctx.save();
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = '#00f3ff';
+        
+        if (d.trail.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(d.trail[0].x, d.trail[0].y);
+            for (let pt of d.trail) {
+                ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.strokeStyle = 'rgba(0, 243, 255, 0.45)';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+        }
+
+        // 3D Dart Head Glossy Shading
+        let dartGrad = ctx.createRadialGradient(d.x - 2, d.y - 2, 1, d.x, d.y, 6);
+        dartGrad.addColorStop(0, '#ffffff');
+        dartGrad.addColorStop(0.4, '#00f3ff');
+        dartGrad.addColorStop(1, '#0284c7');
+        ctx.fillStyle = dartGrad;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    // Draw 3D Glossy Crystal Shards / Particles
+    particles.forEach(p => {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fillStyle = p.color;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.color;
+
+        ctx.beginPath();
+        ctx.moveTo(-p.size / 2, -p.size / 2);
+        ctx.lineTo(p.size / 2, -p.size / 3);
+        ctx.lineTo(0, p.size / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    });
+
+    // Draw Floating Score & Penalty Texts
+    floatTexts.forEach(ft => {
+        ctx.save();
+        ctx.globalAlpha = ft.alpha;
+        ctx.fillStyle = ft.color;
+        ctx.font = 'bold 18px sans-serif';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = ft.color;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+    });
+
+    // Draw 3D Orbital Launcher Core
+    drawLauncher();
+
+    // Draw Aiming Guide Vector
+    if (isDragging) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0, 243, 255, 0.7)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 6]);
+        ctx.beginPath();
+        ctx.moveTo(launcher.x, launcher.y);
+        ctx.lineTo(launcher.x + Math.cos(launcher.angle) * 150, launcher.y + Math.sin(launcher.angle) * 150);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    ctx.restore();
+}
+
+function drawLauncher() {
+    ctx.save();
+    ctx.shadowBlur = 35;
+    ctx.shadowColor = '#8a2be2';
+
+    // Outer Neon Ring with 3D Depth
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(launcher.x, launcher.y, launcher.radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner Metallic Volumetric Core
+    let coreGrad = ctx.createRadialGradient(launcher.x - 5, launcher.y - 5, 5, launcher.x, launcher.y, launcher.radius);
+    coreGrad.addColorStop(0, '#00f3ff');
+    coreGrad.addColorStop(0.5, '#2e1065');
+    coreGrad.addColorStop(1, '#050714');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(launcher.x, launcher.y, launcher.radius * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 3D Glossy Launcher Barrel
+    ctx.strokeStyle = '#00f3ff';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(launcher.x, launcher.y);
+    ctx.lineTo(launcher.x + Math.cos(launcher.angle) * (launcher.radius + 14), launcher.y + Math.sin(launcher.angle) * (launcher.radius + 14));
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Zen Pendulum - High-Graphics Simulation & Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            overscroll-behavior: none;
+            background: #08080c;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-center items-center overflow-hidden fixed touch-none font-sans text-white">
+
+    <!-- Game Container -->
+    <div id="game-container" class="relative shadow-[0_0_60px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="ui" class="absolute top-4 left-6 right-6 flex justify-between items-center pointer-events-none text-base font-black tracking-wider z-10 drop-shadow-md">
+            <div class="flex gap-6 items-center">
+                <div id="zen-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-cyan-400">ZEN HARMONY: 100%</div>
+                <div id="mode-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-amber-400">MODE: DOUBLE PENDULUM</div>
+            </div>
+            <div class="flex gap-4 items-center">
+                <button class="pointer-events-auto bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer" onclick="toggleMode()">SWITCH MODE</button>
+                <button class="pointer-events-auto bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer" onclick="clearTrail()">CLEAR CANVAS</button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 bg-[#08080c]/95 backdrop-blur-2xl flex flex-col justify-center items-center text-center z-20 p-6">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(45,212,191,0.12)_0,transparent_70%)] pointer-events-none"></div>
+            <h1 class="text-5xl font-black mb-3 bg-gradient-to-r from-teal-400 via-cyan-300 to-indigo-500 bg-clip-text text-transparent tracking-widest drop-shadow-[0_5px_20px_rgba(45,212,191,0.4)]">ZEN PENDULUM</h1>
+            <p class="text-xs text-slate-400 max-w-md mb-8 leading-relaxed uppercase tracking-widest font-semibold">Cinematic Chaos Physics • Sand Art & Flow Simulation • Mobile Landscape Optimized</p>
+            <button class="bg-gradient-to-r from-teal-400 via-cyan-500 to-indigo-600 text-slate-950 font-black py-4 px-10 text-lg rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_0_35px_rgba(45,212,191,0.5)] uppercase tracking-wider" onclick="startGame()">Begin Journey</button>
+        </div>
+    </div>
+
+    <!-- Landscape Warning Overlay for Portrait Mobile Users -->
+    <div id="orientation-warning" class="fixed inset-0 bg-[#08080c] z-50 hidden flex-col justify-center items-center text-center p-6">
+        <div class="text-5xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-xl font-black tracking-wider mb-2 text-teal-400">PLEASE ROTATE YOUR DEVICE</h2>
+        <p class="text-xs text-slate-400 max-w-xs leading-relaxed">This atmospheric zen experience is engineered strictly for landscape orientation for maximum canvas space and visual harmony.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Offscreen canvas for persistent sand/light trails
+        const trailCanvas = document.createElement('canvas');
+        trailCanvas.width = canvas.width;
+        trailCanvas.height = canvas.height;
+        const trailCtx = trailCanvas.getContext('2d');
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        let gameState = 'START';
+        let simulationMode = 'DOUBLE'; // 'DOUBLE' or 'SAND'
+        let lastTime = 0;
+
+        // Double Pendulum Physics Variables
+        let cx = WIDTH / 2;
+        let cy = HEIGHT / 2 - 40;
+        
+        let r1 = 120;
+        let r2 = 100;
+        let m1 = 20;
+        let m2 = 20;
+        let a1 = Math.PI / 2;
+        let a2 = Math.PI / 2;
+        let a1_v = 0;
+        let a2_v = 0;
+        const g = 1;
+
+        let lastX = null;
+        let lastY = null;
+        let zenHarmony = 100;
+
+        function requestFullscreenAndLockLandscape() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        }
+
+        function checkOrientation() {
+            const warning = document.getElementById('orientation-warning');
+            if (window.innerHeight > window.innerWidth && window.innerWidth < 900) {
+                warning.classList.remove('hidden');
+                warning.classList.add('flex');
+            } else {
+                warning.classList.remove('flex');
+                warning.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('resize', checkOrientation);
+        window.addEventListener('orientationchange', checkOrientation);
+
+        function startGame() {
+            requestFullscreenAndLockLandscape();
+            document.getElementById('start-screen').classList.add('hidden');
+            clearTrail();
+            resetSimulation();
+        }
+
+        function resetSimulation() {
+            a1 = Math.PI / (Math.random() > 0.5 ? 2 : 1.5);
+            a2 = Math.PI / (Math.random() > 0.5 ? 2 : 2.5);
+            a1_v = 0;
+            a2_v = 0;
+            lastX = null;
+            lastY = null;
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function clearTrail() {
+            trailCtx.fillStyle = '#08080c';
+            trailCtx.fillRect(0, 0, WIDTH, HEIGHT);
+        }
+
+        function toggleMode() {
+            simulationMode = simulationMode === 'DOUBLE' ? 'SAND' : 'DOUBLE';
+            document.getElementById('mode-display').innerText = `MODE: ${simulationMode === 'DOUBLE' ? 'DOUBLE PENDULUM' : 'ZEN SAND GARDEN'}`;
+            clearTrail();
+            resetSimulation();
+        }
+
+        // Interactive touch/mouse impulse to nudge pendulum
+        function handleInteraction(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = WIDTH / rect.width;
+            const scaleY = HEIGHT / rect.height;
+            const clickX = (clientX - rect.left) * scaleX;
+            const clickY = (clientY - rect.top) * scaleY;
+
+            // Apply angular velocity kick based on touch position relative to pivot
+            let dx = clickX - cx;
+            let dy = clickY - cy;
+            a1_v += (Math.random() - 0.5) * 0.2;
+            a2_v += (Math.random() - 0.5) * 0.4;
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            handleInteraction(e.clientX, e.clientY);
+        });
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            let deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Physics Calculations for Double Pendulum (Lagrangian mechanics)
+            // Num 1
+            let num1 = -g * (2 * m1 + m2) * Math.sin(a1);
+            let num2 = -m2 * g * Math.sin(a1 - 2 * a2);
+            let num3 = -2 * Math.sin(a1 - a2) * m2 * (a2_v * a2_v * r2 + a1_v * a1_v * r1 * Math.cos(a1 - a2));
+            let den = r1 * (2 * m1 + m2 - m2 * Math.cos(2 * a1 - 2 * a2));
+            let a1_acc = (num1 + num2 + num3) / den;
+
+            // Num 2
+            let num4 = 2 * Math.sin(a1 - a2);
+            let num5 = a1_v * a1_v * r1 * (m1 + m2) + g * (m1 + m2) * Math.cos(a1) + a2_v * a2_v * r2 * m2 * Math.cos(a1 - a2);
+            let a2_acc = (num4 * num5) / (r2 * (2 * m1 + m2 - m2 * Math.cos(2 * a1 - 2 * a2)));
+
+            a1_v += a1_acc;
+            a2_v += a2_acc;
+            a1 += a1_v;
+            a2 += a2_v;
+
+            // Damping for atmospheric stability
+            a1_v *= 0.999;
+            a2_v *= 0.999;
+
+            // Calculate coordinates of bob 1 and bob 2
+            let x1 = cx + r1 * Math.sin(a1);
+            let y1 = cy + r1 * Math.cos(a1);
+
+            let x2 = x1 + r2 * Math.sin(a2);
+            let y2 = y1 + r2 * Math.cos(a2);
+
+            // Fade trail slightly for gorgeous light persistence effect
+            trailCtx.fillStyle = 'rgba(8, 8, 12, 0.03)';
+            trailCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw glowing trajectory on trail canvas
+            if (lastX !== null && lastY !== null) {
+                trailCtx.save();
+                trailCtx.strokeStyle = simulationMode === 'DOUBLE' ? '#2dd4bf' : '#fbbf24';
+                trailCtx.lineWidth = simulationMode === 'DOUBLE' ? 2.5 : 4;
+                trailCtx.shadowColor = simulationMode === 'DOUBLE' ? '#2dd4bf' : '#fbbf24';
+                trailCtx.shadowBlur = 15;
+                trailCtx.beginPath();
+                trailCtx.moveTo(lastX, lastY);
+                trailCtx.lineTo(x2, y2);
+                trailCtx.stroke();
+                trailCtx.restore();
+            }
+            lastX = x2;
+            lastY = y2;
+
+            // Render Frame onto main canvas
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw persistent trail layer
+            ctx.drawImage(trailCanvas, 0, 0);
+
+            // Draw Pendulum Rods & Bobs with High-Graphics lighting
+            ctx.save();
+            
+            // Rod 1 & 2
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            // Pivot Point
+            ctx.fillStyle = '#64748b';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bob 1
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 15;
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(x1, y1, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bob 2 (Main Tracer)
+            ctx.shadowColor = simulationMode === 'DOUBLE' ? '#2dd4bf' : '#fbbf24';
+            ctx.shadowBlur = 25;
+            ctx.fillStyle = simulationMode === 'DOUBLE' ? '#2dd4bf' : '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(x2, y2, 14, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initial check on load
+        checkOrientation();
+    </script>
+</body>
+</html>

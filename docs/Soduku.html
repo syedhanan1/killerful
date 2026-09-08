@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-End WebGL 3D Sudoku</title>
+    <!-- Tailwind CSS for UI overlays -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js and Addons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Inter', sans-serif; user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        .ui-layer { position: absolute; z-index: 10; pointer-events: none; }
+        .interactive { pointer-events: auto; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlays -->
+    <div class="ui-layer inset-0 flex flex-col justify-between p-6 pointer-events-none">
+        <!-- Top Header -->
+        <div class="flex justify-between items-center w-full max-w-5xl mx-auto">
+            <div class="bg-black/40 backdrop-blur-md border border-white/10 px-6 py-3 rounded-2xl text-white shadow-2xl interactive">
+                <h1 class="text-xl font-bold tracking-wider bg-gradient-to-r from-amber-200 to-amber-500 bg-clip-text text-transparent">SUDOKU // NEXUS</h1>
+                <p id="status-text" class="text-xs text-gray-400 mt-0.5">Select a cell & pick a number</p>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="newGame()" class="interactive bg-white/10 hover:bg-white/20 border border-white/10 text-white px-5 py-2.5 rounded-xl font-medium text-sm backdrop-blur-md transition shadow-lg">New Game</button>
+            </div>
+        </div>
+
+        <!-- Bottom Numpad / Controls -->
+        <div class="flex flex-col items-center gap-4 pb-2">
+            <div id="notification" class="opacity-0 transition-opacity duration-300 bg-amber-500/90 text-black font-semibold px-6 py-2 rounded-full shadow-2xl text-sm">
+                Puzzle Completed!
+            </div>
+            
+            <!-- 3D Number Input Dock -->
+            <div class="interactive bg-black/60 backdrop-blur-xl border border-white/10 p-3 rounded-2xl flex gap-2 shadow-2xl">
+                <button onclick="inputNumber(1)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">1</button>
+                <button onclick="inputNumber(2)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">2</button>
+                <button onclick="inputNumber(3)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">3</button>
+                <button onclick="inputNumber(4)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">4</button>
+                <button onclick="inputNumber(5)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">5</button>
+                <button onclick="inputNumber(6)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">6</button>
+                <button onclick="inputNumber(7)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">7</button>
+                <button onclick="inputNumber(8)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">8</button>
+                <button onclick="inputNumber(9)" class="w-11 h-11 bg-white/5 hover:bg-amber-500 hover:text-black border border-white/10 text-white font-bold rounded-xl transition flex items-center justify-center text-lg">9</button>
+                <div class="w-[1px] bg-white/10 mx-1"></div>
+                <button onclick="inputNumber(0)" class="w-11 h-11 bg-red-500/20 hover:bg-red-500/40 border border-red-500/30 text-red-300 font-bold rounded-xl transition flex items-center justify-center text-xs">CLR</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Globals & Initialization ---
+        let scene, camera, renderer, controls, composer;
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+
+        let selectedCell = null; // {r, c}
+        let cellMeshes = []; // 2D array [9][9] of cell block meshes
+        let numberMeshes = []; // 2D array storing 3D text/geometry representations of digits
+
+        // Materials
+        let matCellDefault, matCellAlternate, matCellSelected, matCellHighlight, matBorder;
+        let matInitialNumber, matUserNumber, matErrorNumber;
+
+        // Sample valid puzzle configuration + mask (0 = empty)
+        const SOLUTION = [
+            [5,3,4,6,7,8,9,1,2],
+            [6,7,2,1,9,5,3,4,8],
+            [1,9,8,3,4,2,5,6,7],
+            [8,5,9,7,6,1,4,2,3],
+            [4,2,6,8,5,3,7,9,1],
+            [7,1,3,9,2,4,8,5,6],
+            [9,6,1,5,3,7,2,8,4],
+            [2,8,7,4,1,9,6,3,5],
+            [3,4,5,2,8,6,1,7,9]
+        ];
+        
+        let initialMask = [
+            [1,1,0,0,1,0,0,1,1],
+            [1,0,0,1,1,1,0,0,1],
+            [0,1,1,0,0,0,1,1,0],
+            [1,1,0,1,0,1,0,1,1],
+            [1,0,1,1,0,1,1,0,1],
+            [1,1,0,1,0,1,0,1,1],
+            [0,1,1,0,0,0,1,1,0],
+            [1,0,0,1,1,1,0,0,1],
+            [1,1,0,0,1,0,0,1,1]
+        ];
+
+        let boardState = [];
+
+        const BOARD_SIZE = 9;
+        const CELL_SIZE = 0.9;
+        const OFFSET = (BOARD_SIZE * CELL_SIZE) / 2 - CELL_SIZE / 2;
+
+        initGraphics();
+        initSceneContent();
+        newGame();
+        setupEvents();
+        animate();
+
+        function initGraphics() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.04);
+
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 12, 10);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            controls.minDistance = 6;
+            controls.maxDistance = 22;
+
+            // Post-Processing Bloom
+            const renderScene = new THREE.RenderPass(scene, camera);
+            const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 0.85);
+            
+            composer = new THREE.EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function initSceneContent() {
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffaed, 1.8);
+            sunLight.position.set(6, 14, 6);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.bias = -0.0001;
+            scene.add(sunLight);
+
+            const rimLight = new THREE.PointLight(0x38bdf8, 2.5, 20);
+            rimLight.position.set(-6, 5, -6);
+            scene.add(rimLight);
+
+            // PBR Materials
+            matCellDefault = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
+            matCellAlternate = new THREE.MeshStandardMaterial({ color: 0x202025, roughness: 0.5 });
+            matCellSelected = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, emissive: 0x451a03 });
+            matCellHighlight = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.4, emissive: 0x18181b });
+            matBorder = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.2, metalness: 0.8 });
+
+            matInitialNumber = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.2, metalness: 0.2 });
+            matUserNumber = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.4, emissive: 0x0369a1, emissiveIntensity: 0.2 });
+            matErrorNumber = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2, emissive: 0x7f1d1d, emissiveIntensity: 0.4 });
+
+            createBoardBase();
+        }
+
+        function createBoardBase() {
+            // Frame container
+            const frameGeo = new THREE.BoxGeometry(8.7, 0.4, 8.7);
+            const frame = new THREE.Mesh(frameGeo, matBorder);
+            frame.position.y = -0.25;
+            frame.receiveShadow = true;
+            scene.add(frame);
+
+            // Generate 9x9 cells
+            cellMeshes = [];
+            numberMeshes = [];
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                cellMeshes[r] = [];
+                numberMeshes[r] = [];
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const blockGeo = new THREE.BoxGeometry(CELL_SIZE * 0.92, 0.08, CELL_SIZE * 0.92);
+                    
+                    // Divide into visual 3x3 box zones
+                    const boxRow = Math.floor(r / 3);
+                    const boxCol = Math.floor(c / 3);
+                    const isAlt = (boxRow + boxCol) % 2 === 1;
+
+                    const cell = new THREE.Mesh(blockGeo, isAlt ? matCellAlternate : matCellDefault);
+                    
+                    const posX = c * CELL_SIZE - OFFSET;
+                    const posZ = r * CELL_SIZE - OFFSET;
+                    cell.position.set(posX, 0, posZ);
+                    cell.receiveShadow = true;
+                    cell.userData = { row: r, col: c };
+
+                    scene.add(cell);
+                    cellMeshes[r][c] = cell;
+                    numberMeshes[r][c] = null;
+                }
+            }
+        }
+
+        // Procedurally build 3D geometric numbers (1 through 9) to prevent asset load lag or missing fonts
+        function createDigitMesh(digit, material) {
+            const group = new THREE.Group();
+            const mat = material;
+            const th = 0.06; // height/depth of numbers
+
+            // Helper to build bar components for custom high-end minimalist block numbers
+            const addBar = (w, h, d, x, y, z, rotY = 0) => {
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+                mesh.position.set(x, y, z);
+                mesh.rotation.y = rotY;
+                mesh.castShadow = true;
+                group.add(mesh);
+            };
+
+            const sz = 0.35; // scale factor
+            const t = 0.08;  // thickness
+
+            switch(digit) {
+                case 1:
+                    addBar(t, sz * 1.8, t, 0, sz * 0.9, 0);
+                    break;
+                case 2:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 0.9, t, sz / 2 - t / 2, sz * 1.35, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    addBar(t, sz * 0.9, t, -sz / 2 + t / 2, sz * 0.45, 0);
+                    addBar(sz, t, t, 0, 0, 0);
+                    break;
+                case 3:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 1.8, t, sz / 2 - t / 2, sz * 0.9, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    addBar(sz, t, t, 0, 0, 0);
+                    break;
+                case 4:
+                    addBar(t, sz * 0.9, t, -sz / 2 + t / 2, sz * 1.35, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    addBar(t, sz * 1.8, t, sz / 2 - t / 2, sz * 0.9, 0);
+                    break;
+                case 5:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 0.9, t, -sz / 2 + t / 2, sz * 1.35, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    addBar(t, sz * 0.9, t, sz / 2 - t / 2, sz * 0.45, 0);
+                    addBar(sz, t, t, 0, 0, 0);
+                    break;
+                case 6:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 1.8, t, -sz / 2 + t / 2, sz * 0.9, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    addBar(t, sz * 0.9, t, sz / 2 - t / 2, sz * 0.45, 0);
+                    addBar(sz, t, t, 0, 0, 0);
+                    break;
+                case 7:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 1.8, t, sz / 2 - t / 2, sz * 0.9, 0);
+                    break;
+                case 8:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 1.8, t, -sz / 2 + t / 2, sz * 0.9, 0);
+                    addBar(t, sz * 1.8, t, sz / 2 - t / 2, sz * 0.9, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    addBar(sz, t, t, 0, 0, 0);
+                    break;
+                case 9:
+                    addBar(sz, t, t, 0, sz * 1.8, 0);
+                    addBar(t, sz * 0.9, t, -sz / 2 + t / 2, sz * 1.35, 0);
+                    addBar(t, sz * 1.8, t, sz / 2 - t / 2, sz * 0.9, 0);
+                    addBar(sz, t, t, 0, sz * 0.9, 0);
+                    break;
+            }
+
+            group.rotation.x = -Math.PI / 2;
+            group.position.y = 0.04;
+            // Center alignment offset adjustments
+            group.position.x -= sz / 2 - t / 2;
+            group.position.z += sz / 2 - t / 2;
+
+            return group;
+        }
+
+        function newGame() {
+            boardState = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                boardState[r] = [];
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    boardState[r][c] = initialMask[r][c] === 1 ? SOLUTION[r][c] : 0;
+                }
+            }
+            selectedCell = null;
+            document.getElementById('notification').style.opacity = '0';
+            document.getElementById('status-text').innerText = "Select a cell & pick a number";
+            syncVisualBoard();
+        }
+
+        function syncVisualBoard() {
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    // Remove old mesh if exists
+                    if (numberMeshes[r][c]) {
+                        scene.remove(numberMeshes[r][c]);
+                        numberMeshes[r][c] = null;
+                    }
+
+                    const val = boardState[r][c];
+                    if (val !== 0) {
+                        const isInitial = initialMask[r][c] === 1;
+                        let mat = isInitial ? matInitialNumber : matUserNumber;
+                        
+                        // Check logic error if user entered conflicting values
+                        if (!isInitial && val !== SOLUTION[r][c]) {
+                            // Optional live validation flag can be enabled here, keeping clean standard look until checked
+                        }
+
+                        const digitMesh = createDigitMesh(val, mat);
+                        const posX = c * CELL_SIZE - OFFSET;
+                        const posZ = r * CELL_SIZE - OFFSET;
+                        digitMesh.position.x += posX;
+                        digitMesh.position.z += posZ;
+
+                        scene.add(digitMesh);
+                        numberMeshes[r][c] = digitMesh;
+                    }
+                }
+            }
+        }
+
+        // --- Interactivity ---
+        function setupEvents() {
+            window.addEventListener('pointerdown', onPointerDown);
+            window.addEventListener('keydown', onKeyDown);
+        }
+
+        function onPointerDown(event) {
+            if (event.button !== 0) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            if (intersects.length > 0) {
+                let target = intersects[0].object;
+                while (target && !target.userData.row && target.parent && target.parent !== scene) {
+                    target = target.parent;
+                }
+
+                if (target && target.userData && target.userData.row !== undefined) {
+                    selectCell(target.userData.row, target.userData.col);
+                }
+            }
+        }
+
+        function selectCell(r, c) {
+            selectedCell = { r, c };
+            
+            // Refresh board block highlights
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    const boxRow = Math.floor(row / 3);
+                    const boxCol = Math.floor(col / 3);
+                    const isAlt = (boxRow + boxCol) % 2 === 1;
+                    
+                    if (row === r && col === c) {
+                        cellMeshes[row][col].material = matCellSelected;
+                    } else if (row === r || col === c || (Math.floor(row/3) === Math.floor(r/3) && Math.floor(col/3) === Math.floor(c/3))) {
+                        cellMeshes[row][col].material = matCellHighlight;
+                    } else {
+                        cellMeshes[row][col].material = isAlt ? matCellAlternate : matCellDefault;
+                    }
+                }
+            }
+            document.getElementById('status-text').innerText = `Selected Cell: Row ${r + 1}, Col ${c + 1}`;
+        }
+
+        function inputNumber(num) {
+            if (!selectedCell) return;
+            const { r, c } = selectedCell;
+
+            // Prevent overwriting initial puzzle template digits
+            if (initialMask[r][c] === 1) {
+                document.getElementById('status-text').innerText = "Cannot modify initial layout cells!";
+                return;
+            }
+
+            boardState[r][c] = num;
+            syncVisualBoard();
+            // Re-apply selection color highlight state visually
+            selectCell(r, c);
+            checkCompletion();
+        }
+
+        function onKeyDown(e) {
+            if (!selectedCell) return;
+            if (e.key >= '1' && e.key <= '9') {
+                inputNumber(parseInt(e.key));
+            } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+                inputNumber(0);
+            }
+        }
+
+        function checkCompletion() {
+            let complete = true;
+            let correct = true;
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (boardState[r][c] === 0) complete = false;
+                    if (boardState[r][c] !== SOLUTION[r][c]) correct = false;
+                }
+            }
+
+            if (complete) {
+                const notif = document.getElementById('notification');
+                notif.style.opacity = '1';
+                notif.innerText = correct ? "Brilliant! Puzzle Solved Perfectly!" : "Board full, but contains errors. Keep tweaking!";
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Render Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            composer.render();
+        }
+    </script>
+</body>
+</html>

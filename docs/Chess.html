@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-End WebGL 3D Chess</title>
+    <!-- Tailwind CSS for UI overlays -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js and Addons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <!-- Chess logic and AI -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Inter', sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        .ui-layer { position: absolute; z-index: 10; pointer-events: none; }
+        .interactive { pointer-events: auto; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlays -->
+    <div class="ui-layer inset-0 flex flex-col justify-between p-6 pointer-events-none">
+        <!-- Top Header -->
+        <div class="flex justify-between items-center w-full max-w-7xl mx-auto">
+            <div class="bg-black/40 backdrop-blur-md border border-white/10 px-6 py-3 rounded-2xl text-white shadow-2xl interactive">
+                <h1 class="text-xl font-bold tracking-wider bg-gradient-to-r from-amber-200 to-amber-500 bg-clip-text text-transparent">CHESS // NEXUS</h1>
+                <p id="status-text" class="text-xs text-gray-400 mt-0.5">White's Turn (Your Move)</p>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="resetGame()" class="interactive bg-white/10 hover:bg-white/20 border border-white/10 text-white px-5 py-2.5 rounded-xl font-medium text-sm backdrop-blur-md transition shadow-lg">New Game</button>
+            </div>
+        </div>
+
+        <!-- Bottom Notification / Turn info -->
+        <div class="flex justify-center items-center pb-4">
+            <div id="notification" class="opacity-0 transition-opacity duration-300 bg-amber-500/90 text-black font-semibold px-6 py-2 rounded-full shadow-2xl text-sm">
+                Checkmate!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Globals & Initialization ---
+        let scene, camera, renderer, controls, composer;
+        let chess = new Chess();
+        let pieces3D = {}; // Maps chess notation (e.g. 'e4') to 3D meshes
+        let selectedSquare = null;
+        let legalMoveMarkers = [];
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+
+        // Materials
+        let matWhitePiece, matBlackPiece, matLightSquare, matDarkSquare, matBoardBorder;
+
+        const BOARD_SIZE = 8;
+        const SQUARE_SIZE = 1;
+        const OFFSET = (BOARD_SIZE * SQUARE_SIZE) / 2 - SQUARE_SIZE / 2;
+
+        initGraphics();
+        initSceneContent();
+        setupEvents();
+        animate();
+
+        function initGraphics() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.05);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 11, 8);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below board
+            controls.minDistance = 5;
+            controls.maxDistance = 20;
+
+            // Post-Processing for High-End Glow / Bloom
+            const renderScene = new THREE.RenderPass(scene, camera);
+            const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.4, 0.4, 0.85);
+            
+            composer = new THREE.EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            // Window resizing
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function initSceneContent() {
+            // --- Lighting ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffaed, 2.0);
+            sunLight.position.set(5, 12, 5);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.bias = -0.0001;
+            scene.add(sunLight);
+
+            const rimLight = new THREE.PointLight(0x38bdf8, 3, 20);
+            rimLight.position.set(-6, 4, -6);
+            scene.add(rimLight);
+
+            // --- PBR Materials Setup ---
+            matWhitePiece = new THREE.MeshStandardMaterial({
+                color: 0xf3f4f6,
+                roughness: 0.15,
+                metalness: 0.3,
+            });
+
+            matBlackPiece = new THREE.MeshStandardMaterial({
+                color: 0x111827,
+                roughness: 0.25,
+                metalness: 0.8,
+            });
+
+            matLightSquare = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.4 });
+            matDarkSquare = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6 });
+            matBoardBorder = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.2, metalness: 0.9 });
+
+            createBoard();
+            syncBoardWithChessState();
+        }
+
+        // --- Procedural 3D Geometry Generation for Chess Pieces ---
+        function createPieceMesh(type, color) {
+            const group = new THREE.Group();
+            const mat = (color === 'w') ? matWhitePiece : matBlackPiece;
+
+            // Base platform for all pieces
+            const baseGeo = new THREE.CylinderGeometry(0.38, 0.42, 0.1, 32);
+            const base = new THREE.Mesh(baseGeo, mat);
+            base.castShadow = true;
+            base.receiveShadow = true;
+            group.add(base);
+
+            let bodyGeo;
+            switch(type) {
+                case 'p': // Pawn
+                    bodyGeo = new THREE.SphereGeometry(0.25, 32, 32);
+                    bodyGeo.scale(1, 1.3, 1);
+                    const pawnMesh = new THREE.Mesh(bodyGeo, mat);
+                    pawnMesh.position.y = 0.3;
+                    pawnMesh.castShadow = true;
+                    group.add(pawnMesh);
+                    break;
+                case 'r': // Rook
+                    const rookBody = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.8, 32), mat);
+                    rookBody.position.y = 0.45;
+                    rookBody.castShadow = true;
+                    group.add(rookBody);
+                    const topRook = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.2, 8), mat);
+                    topRook.position.y = 0.95;
+                    topRook.castShadow = true;
+                    group.add(topRook);
+                    break;
+                case 'n': // Knight (Stylized geometric abstraction)
+                    const horseBody = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.9, 4), mat);
+                    horseBody.position.y = 0.5;
+                    horseBody.rotation.y = Math.PI / 4;
+                    horseBody.castShadow = true;
+                    group.add(horseBody);
+                    break;
+                case 'b': // Bishop
+                    const bishopBody = new THREE.Mesh(new THREE.ConeGeometry(0.26, 1.1, 32), mat);
+                    bishopBody.position.y = 0.6;
+                    bishopBody.castShadow = true;
+                    group.add(bishopBody);
+                    // Mitre cap
+                    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), mat);
+                    cap.position.y = 1.15;
+                    group.add(cap);
+                    break;
+                case 'q': // Queen
+                    const queenBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 1.2, 32), mat);
+                    queenBody.position.y = 0.65;
+                    queenBody.castShadow = true;
+                    group.add(queenBody);
+                    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16), mat);
+                    crown.position.y = 1.3;
+                    crown.castShadow = true;
+                    group.add(crown);
+                    break;
+                case 'k': // King
+                    const kingBody = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.34, 1.3, 32), mat);
+                    kingBody.position.y = 0.7;
+                    kingBody.castShadow = true;
+                    group.add(kingBody);
+                    // Cross on top
+                    const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.25, 0.06), mat);
+                    crossV.position.y = 1.45;
+                    const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.06), mat);
+                    crossH.position.y = 1.40;
+                    group.add(crossV, crossH);
+                    break;
+            }
+
+            return group;
+        }
+
+        function createBoard() {
+            // Board Outer Frame / Case
+            const frameGeo = new THREE.BoxGeometry(9.2, 0.4, 9.2);
+            const frame = new THREE.Mesh(frameGeo, matBoardBorder);
+            frame.position.y = -0.25;
+            frame.receiveShadow = true;
+            scene.add(frame);
+
+            // 64 Squares
+            for (let x = 0; x < BOARD_SIZE; x++) {
+                for (let z = 0; z < BOARD_SIZE; z++) {
+                    const isDark = (x + z) % 2 === 1;
+                    const squareGeo = new THREE.BoxGeometry(SQUARE_SIZE, 0.05, SQUARE_SIZE);
+                    const square = new THREE.Mesh(squareGeo, isDark ? matDarkSquare : matLightSquare);
+                    
+                    square.position.set(x * SQUARE_SIZE - OFFSET, 0, z * SQUARE_SIZE - OFFSET);
+                    square.receiveShadow = true;
+                    
+                    // Map coordinate to name (e.g. 'a1')
+                    const file = String.fromCharCode(97 + x);
+                    const rank = 8 - z;
+                    square.userData = { square: file + rank };
+                    
+                    scene.add(square);
+                }
+            }
+        }
+
+        function getPositionFromSquare(squareStr) {
+            const file = squareStr.charCodeAt(0) - 97;
+            const rank = 8 - parseInt(squareStr[1]);
+            return {
+                x: file * SQUARE_SIZE - OFFSET,
+                z: rank * SQUARE_SIZE - OFFSET
+            };
+        }
+
+        function syncBoardWithChessState() {
+            // Remove old pieces from scene
+            Object.values(pieces3D).forEach(mesh => scene.remove(mesh));
+            pieces3D = {};
+
+            const boardData = chess.board();
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = boardData[r][c];
+                    if (piece) {
+                        const file = String.fromCharCode(97 + c);
+                        const rank = 8 - r;
+                        const squareName = file + rank;
+
+                        const mesh = createPieceMesh(piece.type, piece.color);
+                        const pos = getPositionFromSquare(squareName);
+                        mesh.position.set(pos.x, 0, pos.z);
+                        
+                        scene.add(mesh);
+                        pieces3D[squareName] = mesh;
+                    }
+                }
+            }
+        }
+
+        // --- Interaction & Event Handling ---
+        function setupEvents() {
+            window.addEventListener('pointerdown', onPointerDown);
+        }
+
+        function onPointerDown(event) {
+            // Only trigger on Left-Click
+            if (event.button !== 0) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            if (intersects.length > 0) {
+                // Find hit target containing metadata
+                let target = intersects[0].object;
+                while (target && !target.userData.square && target.parent && target.parent !== scene) {
+                    target = target.parent;
+                }
+
+                if (target && target.userData && target.userData.square) {
+                    handleSquareClick(target.userData.square);
+                }
+            }
+        }
+
+        function handleSquareClick(clickedSquare) {
+            const possibleMoves = chess.moves({ square: selectedSquare, verbose: true });
+            const isLegalMove = possibleMoves.some(m => m.to === clickedSquare);
+
+            if (selectedSquare && isLegalMove) {
+                // Execute Move
+                executeMove({ from: selectedSquare, to: clickedSquare, promotion: 'q' });
+                clearSelection();
+            } else {
+                // Try selecting piece if it belongs to current turn player
+                const piece = chess.get(clickedSquare);
+                if (piece && piece.color === chess.turn()) {
+                    selectSquare(clickedSquare);
+                } else {
+                    clearSelection();
+                }
+            }
+        }
+
+        function selectSquare(squareStr) {
+            clearSelection();
+            selectedSquare = squareStr;
+
+            // Highlight legal move indicators
+            const moves = chess.moves({ square: squareStr, verbose: true });
+            moves.forEach(m => {
+                const pos = getPositionFromSquare(m.to);
+                const ringGeo = new THREE.RingGeometry(0.2, 0.28, 32);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.set(pos.x, 0.04, pos.z);
+                scene.add(ring);
+                legalMoveMarkers.push(ring);
+            });
+        }
+
+        function clearSelection() {
+            selectedSquare = null;
+            legalMoveMarkers.forEach(marker => scene.remove(marker));
+            legalMoveMarkers = [];
+        }
+
+        function executeMove(moveObj) {
+            const moveResult = chess.move(moveObj);
+            if (moveResult) {
+                syncBoardWithChessState();
+                updateUIStatus();
+
+                if (chess.game_over()) {
+                    showGameOverNotification();
+                }
+            }
+        }
+
+        function updateUIStatus() {
+            const statusText = document.getElementById('status-text');
+            if (chess.in_checkmate()) {
+                statusText.innerText = "Checkmate! Game Over.";
+            } else if (chess.in_draw()) {
+                statusText.innerText = "Draw! Game Over.";
+            } else {
+                const turn = chess.turn() === 'w' ? "White's Turn" : "Black's Turn";
+                const check = chess.in_check() ? " (CHECK!)" : "";
+                statusText.innerText = turn + check;
+            }
+        }
+
+        function showGameOverNotification() {
+            const notif = document.getElementById('notification');
+            notif.style.opacity = '1';
+            if (chess.in_checkmate()) {
+                notif.innerText = chess.turn() === 'w' ? "Black Wins by Checkmate!" : "White Wins by Checkmate!";
+            } else {
+                notif.innerText = "Game Drawn!";
+            }
+        }
+
+        function resetGame() {
+            chess.reset();
+            clearSelection();
+            syncBoardWithChessState();
+            document.getElementById('notification').style.opacity = '0';
+            updateUIStatus();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Render Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            composer.render();
+        }
+    </script>
+</body>
+</html>

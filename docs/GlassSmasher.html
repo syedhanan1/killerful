@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Next-Gen 3D Glossy Hammer Smash</title>
+    <!-- Include Tailwind CSS via CDN for rapid, clean utility-first styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#030509',
+                        panel: '#0a0e1a'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            overscroll-behavior: none;
+            background-color: #030509;
+        }
+        canvas {
+            display: block;
+            cursor: none;
+        }
+    </style>
+</head>
+<body class="bg-darkbg text-white h-screen w-screen flex flex-col justify-center items-center overflow-hidden fixed touch-none">
+
+    <div id="game-container" class="relative shadow-[0_30px_90px_rgba(0,0,0,0.95)] rounded-3xl overflow-hidden bg-panel border border-white/15">
+        <canvas id="gameCanvas" width="960" height="600"></canvas>
+        
+        <!-- Tailwind CSS Styled UI Overlay -->
+        <div id="ui" class="absolute top-4 left-4 right-4 flex justify-between items-center pointer-events-none text-sm font-bold tracking-wide z-10 text-slate-200">
+            <div class="flex gap-4 items-center">
+                <div id="score-display" class="drop-shadow-md text-amber-300 font-extrabold text-base">Score: 0</div>
+                <div id="level-display" class="drop-shadow-md text-cyan-300 font-extrabold text-base">Level: 1</div>
+            </div>
+            <div class="flex gap-2 items-center flex-wrap">
+                <select id="hammerSelect" class="pointer-events-auto bg-slate-900/90 border border-white/30 text-white py-1.5 px-3 text-xs font-semibold rounded-full cursor-pointer outline-none hover:border-white/80 transition-all shadow-xl backdrop-blur-md" onchange="changeHammer(this.value)">
+                    <option value="steel">Hammer: Steel</option>
+                    <option value="rubber">Hammer: Rubber</option>
+                    <option value="wood">Hammer: Wooden</option>
+                    <option value="plastic">Hammer: Plastic</option>
+                </select>
+
+                <select id="bgSelect" class="pointer-events-auto bg-slate-900/90 border border-white/30 text-white py-1.5 px-3 text-xs font-semibold rounded-full cursor-pointer outline-none hover:border-white/80 transition-all shadow-xl backdrop-blur-md" onchange="changeBackground(this.value)">
+                    <option value="midnight">Bg: Midnight</option>
+                    <option value="cyberpunk">Bg: Cyberpunk</option>
+                    <option value="frozen">Bg: Frozen</option>
+                    <option value="sunset">Bg: Sunset</option>
+                    <option value="matrix">Bg: Matrix</option>
+                    <option value="gold">Bg: Gold</option>
+                    <option value="violet">Bg: Violet</option>
+                    <option value="crimson">Bg: Crimson</option>
+                    <option value="mint">Bg: Mint</option>
+                    <option value="monochrome">Bg: Carbon</option>
+                </select>
+
+                <button class="pointer-events-auto bg-white/15 border border-white/30 text-white py-1.5 px-3 text-xs font-semibold rounded-full cursor-pointer hover:bg-white/30 hover:border-white/80 transition-all shadow-xl active:scale-95 backdrop-blur-md" onclick="resetGame()">Reset</button>
+            </div>
+        </div>
+
+        <!-- Tailwind CSS Styled Start Screen -->
+        <div id="start-screen" class="absolute inset-0 bg-darkbg/95 backdrop-blur-xl flex flex-col justify-center items-center text-center z-20 p-6">
+            <h1 class="text-4xl font-extrabold mb-3 bg-gradient-to-r from-white via-cyan-200 to-amber-400 bg-clip-text text-transparent tracking-wider drop-shadow-2xl">NEXT-GEN GLOSSY SMASH</h1>
+            <p class="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">Immersive 3D glossy refraction, custom physics materials, and full-screen landscape responsive touch controls.</p>
+            <button class="bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 text-slate-950 border-none py-3.5 px-9 text-base font-extrabold rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_6px_30px_rgba(251,191,36,0.5)]" onclick="startGame()">Start Smashing</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let score = 0;
+        let level = 1;
+        let gameState = 'START';
+        let cubes = [];
+        let shards = [];
+        let hammerHits = [];
+        let screenShakeTimer = 0;
+        let lastTime = 0;
+        let currentBgTheme = 'midnight';
+        let currentHammerType = 'steel';
+
+        let mouseX = -100;
+        let mouseY = -100;
+        let lastMouseX = -100;
+        let lastMouseY = -100;
+        let hammerLagX = -100;
+        let hammerLagY = -100;
+        let isSwinging = false;
+        let swingFactor = 0;
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        const BACKGROUNDS = {
+            midnight:   ['#050814', '#111827'],
+            cyberpunk:  ['#180536', '#350b59'],
+            frozen:     ['#041c32', '#0d4f7c'],
+            sunset:     ['#331422', '#611b2f'],
+            matrix:     ['#021c0e', '#08471f'],
+            gold:       ['#261c05', '#57400d'],
+            violet:     ['#210b30', '#4f1770'],
+            crimson:    ['#2e0a0a', '#691717'],
+            mint:       ['#052421', '#104f48'],
+            monochrome: ['#171717', '#333333']
+        };
+
+        const CUBE_THEMES = [
+            { front: 'rgba(239, 68, 68, 0.25)', top: 'rgba(252, 165, 165, 0.4)', right: 'rgba(153, 27, 27, 0.45)', border: '#fca5a5', gloss: '#fee2e2' },
+            { front: 'rgba(59, 130, 246, 0.25)', top: 'rgba(147, 197, 253, 0.4)', right: 'rgba(30, 64, 175, 0.45)', border: '#93c5fd', gloss: '#e0f2fe' },
+            { front: 'rgba(16, 185, 129, 0.25)', top: 'rgba(110, 231, 183, 0.4)', right: 'rgba(6, 95, 70, 0.45)', border: '#6ee7b7', gloss: '#ecfdf5' },
+            { front: 'rgba(168, 85, 247, 0.25)', top: 'rgba(216, 180, 254, 0.4)', right: 'rgba(107, 33, 168, 0.45)', border: '#d8b4fe', gloss: '#f3e8ff' },
+            { front: 'rgba(245, 158, 11, 0.25)', top: 'rgba(253, 224, 71, 0.4)', right: 'rgba(146, 64, 14, 0.45)', border: '#fde047', gloss: '#fefce8' },
+            { front: 'rgba(236, 72, 153, 0.25)', top: 'rgba(244, 114, 182, 0.4)', right: 'rgba(131, 24, 84, 0.45)', border: '#f472b6', gloss: '#fdf2f8' }
+        ];
+
+        class HammerHitEffect {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 8;
+                this.alpha = 1.0;
+            }
+            update() {
+                this.radius += 8;
+                this.alpha -= 0.12;
+            }
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.save();
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                ctx.lineWidth = 3.5;
+                ctx.shadowColor = 'rgba(255, 255, 255, 0.95)';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        class Proper3DCube {
+            constructor(x, y, size, theme) {
+                this.baseX = x; 
+                this.baseY = y;
+                this.size = size; 
+                this.theme = theme;
+                this.health = 100 + (level * 35);
+                this.maxHealth = this.health;
+                
+                this.dx = 0;
+                this.dy = 0;
+                this.scaleX = 1.0;
+                this.scaleY = 1.0;
+                this.rotation = (Math.random() - 0.5) * 0.12;
+                this.cracks = [];
+            }
+
+            contains(px, py) {
+                let s = this.size * Math.max(this.scaleX, 1.0);
+                let cx = this.baseX + this.dx;
+                let cy = this.baseY + this.dy;
+                return px >= cx - s * 1.4 && px <= cx + s * 1.4 && py >= cy - s * 1.5 && py <= cy + s * 1.4;
+            }
+
+            hit(clickX, clickY) {
+                let damage = 50;
+                this.health -= damage;
+                this.cracks.push({ x: clickX, y: clickY });
+
+                this.dx += (Math.random() - 0.5) * 22;
+                this.dy += (Math.random() - 0.5) * 22;
+                this.rotation += (Math.random() - 0.5) * 0.3;
+                this.scaleX *= 0.9 + Math.random() * 0.18;
+                this.scaleY *= 0.9 + Math.random() * 0.18;
+
+                return this.health <= 0;
+            }
+
+            draw() {
+                let s = this.size;
+                let cx = this.baseX + this.dx;
+                let cy = this.baseY + this.dy;
+
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(this.rotation);
+                ctx.scale(this.scaleX, this.scaleY);
+
+                let half = s * 0.8;
+                let depth = s * 0.65;
+
+                let fTL = { x: -half, y: -half };
+                let fTR = { x:  half, y: -half };
+                let fBR = { x:  half, y:  half };
+                let fBL = { x: -half, y:  half };
+
+                let bTL = { x: fTL.x + depth, y: fTL.y - depth };
+                let bTR = { x: fTR.x + depth, y: fTR.y - depth };
+                let bBR = { x: fBR.x + depth, y: fBR.y - depth };
+                let bBL = { x: fBR.x + depth, y: fBR.y + depth };
+
+                // Ambient Shadow / Glow
+                ctx.shadowColor = this.theme.border;
+                ctx.shadowBlur = 25;
+
+                // Right Face
+                ctx.beginPath();
+                ctx.moveTo(fTR.x, fTR.y);
+                ctx.lineTo(bTR.x, bTR.y);
+                ctx.lineTo(bBR.x, bBR.y);
+                ctx.lineTo(fBR.x, fBR.y);
+                ctx.closePath();
+                ctx.fillStyle = this.theme.right;
+                ctx.fill();
+                ctx.strokeStyle = this.theme.border;
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+
+                // Top Face
+                ctx.beginPath();
+                ctx.moveTo(fTL.x, fTL.y);
+                ctx.lineTo(fTR.x, fTR.y);
+                ctx.lineTo(bTR.x, bTR.y);
+                ctx.lineTo(bTL.x, bTL.y);
+                ctx.closePath();
+                ctx.fillStyle = this.theme.top;
+                ctx.fill();
+                ctx.strokeStyle = this.theme.border;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Front Face
+                ctx.beginPath();
+                ctx.moveTo(fTL.x, fTL.y);
+                ctx.lineTo(fTR.x, fTR.y);
+                ctx.lineTo(fBR.x, fBR.y);
+                ctx.lineTo(fBL.x, fBL.y);
+                ctx.closePath();
+                ctx.fillStyle = this.theme.front;
+                ctx.fill();
+                ctx.strokeStyle = this.theme.border;
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                // Next-Gen Glossy Specular Highlights (Glass Sheen)
+                let glossGrad = ctx.createLinearGradient(-half, -half, half, half);
+                glossGrad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+                glossGrad.addColorStop(0.3, 'rgba(255, 255, 255, 0.1)');
+                glossGrad.addColorStop(0.6, 'rgba(255, 255, 255, 0.0)');
+                ctx.fillStyle = glossGrad;
+                ctx.beginPath();
+                ctx.moveTo(fTL.x, fTL.y);
+                ctx.lineTo(fTR.x, fTR.y);
+                ctx.lineTo(fBL.x * 0.4, fBL.y);
+                ctx.closePath();
+                ctx.fill();
+
+                // Dynamic Crack Lines
+                this.cracks.forEach(c => {
+                    let lx = c.x - cx;
+                    let ly = c.y - cy;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = this.theme.gloss;
+                    ctx.beginPath();
+                    for(let i = 0; i < 8; i++) {
+                        let angle = i * (Math.PI / 4);
+                        let l = 18 + (i * 5) % 15;
+                        ctx.moveTo(lx, ly);
+                        ctx.lineTo(lx + Math.cos(angle) * l, ly + Math.sin(angle) * l);
+                    }
+                    ctx.stroke();
+                });
+
+                ctx.restore();
+            }
+        }
+
+        class GlassShard {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.size = 8 + Math.random() * 16;
+                let angle = Math.random() * Math.PI * 2;
+                let speed = 6 + Math.random() * 14;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed - 4;
+                this.rot = Math.random() * Math.PI;
+                this.vrot = (Math.random() - 0.5) * 0.6;
+                this.alpha = 1.0;
+                this.color = color;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.6;
+                this.rot += this.vrot;
+                this.alpha -= 0.025;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rot);
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 8;
+                
+                ctx.beginPath();
+                ctx.moveTo(-this.size/2, -this.size/2);
+                ctx.lineTo(this.size/2, -this.size/3);
+                ctx.lineTo(0, this.size/2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        function drawTool(targetX, targetY) {
+            let lagFactor = currentHammerType === 'rubber' ? 0.38 : (currentHammerType === 'plastic' ? 0.28 : 0.48);
+            hammerLagX += (targetX - hammerLagX) * lagFactor;
+            hammerLagY += (targetY - hammerLagY) * lagFactor;
+
+            let vx = targetX - lastMouseX;
+            let vy = targetY - lastMouseY;
+            lastMouseX = targetX;
+            lastMouseY = targetY;
+            let speed = Math.sqrt(vx * vx + vy * vy);
+
+            ctx.save();
+            ctx.translate(hammerLagX, hammerLagY);
+
+            if (isSwinging) {
+                let swingSpeed = currentHammerType === 'rubber' ? 0.45 : 0.55;
+                swingFactor += swingSpeed;
+                if (swingFactor >= Math.PI) {
+                    isSwinging = false;
+                }
+            } else {
+                swingFactor += (0 - swingFactor) * 0.25;
+            }
+
+            let bendAngle = (-vx * 0.018) + Math.sin(swingFactor) * (currentHammerType === 'rubber' ? 0.85 : 0.45);
+            ctx.rotate(bendAngle);
+
+            let stretchX = 1.0;
+            let stretchY = 1.0;
+            if (currentHammerType === 'rubber') {
+                stretchX = 1.0 + Math.min(speed * 0.025, 0.45) - Math.sin(swingFactor) * 0.35;
+                stretchY = 1.0 - Math.min(speed * 0.025, 0.25) + Math.sin(swingFactor) * 0.45;
+            } else if (currentHammerType === 'plastic') {
+                stretchX = 1.0 + Math.sin(swingFactor) * 0.18;
+                stretchY = 1.0 - Math.sin(swingFactor) * 0.22;
+            }
+            ctx.scale(stretchX, stretchY);
+
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 18;
+
+            if (currentHammerType === 'steel') {
+                let hGrad = ctx.createLinearGradient(0, 0, 0, 55);
+                hGrad.addColorStop(0, '#71717a'); hGrad.addColorStop(1, '#18181b');
+                ctx.fillStyle = hGrad;
+                ctx.beginPath(); ctx.roundRect(-4.5, 0, 9, 56, 3.5); ctx.fill();
+                ctx.strokeStyle = '#27272a'; ctx.lineWidth = 1.2; ctx.stroke();
+
+                let headGrad = ctx.createLinearGradient(-36, -28, 36, 0);
+                headGrad.addColorStop(0, '#ffffff'); headGrad.addColorStop(0.4, '#a1a1aa'); headGrad.addColorStop(1, '#27272a');
+                ctx.fillStyle = headGrad;
+                ctx.beginPath(); ctx.roundRect(-38, -25, 76, 30, 5); ctx.fill();
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+            } else if (currentHammerType === 'rubber') {
+                let hGrad = ctx.createLinearGradient(0, 0, 0, 58);
+                hGrad.addColorStop(0, '#ff9f43'); hGrad.addColorStop(1, '#ee5253');
+                ctx.fillStyle = hGrad;
+                ctx.beginPath(); ctx.roundRect(-5.5, 0, 11, 60, 6); ctx.fill();
+                ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.8; ctx.stroke();
+
+                let headGrad = ctx.createLinearGradient(-36, -28, 36, 0);
+                headGrad.addColorStop(0, '#fffa65'); headGrad.addColorStop(0.5, '#ff9f43'); headGrad.addColorStop(1, '#b33939');
+                ctx.fillStyle = headGrad;
+                ctx.beginPath(); ctx.roundRect(-40, -28, 80, 32, 9); ctx.fill();
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.2; ctx.stroke();
+
+            } else if (currentHammerType === 'wood') {
+                let hGrad = ctx.createLinearGradient(0, 0, 0, 55);
+                hGrad.addColorStop(0, '#f59e0b'); hGrad.addColorStop(1, '#78350f');
+                ctx.fillStyle = hGrad;
+                ctx.beginPath(); ctx.roundRect(-5, 0, 10, 54, 3); ctx.fill();
+                ctx.strokeStyle = '#451a03'; ctx.lineWidth = 1.2; ctx.stroke();
+
+                let headGrad = ctx.createLinearGradient(-38, -26, 38, 0);
+                headGrad.addColorStop(0, '#fde68a'); headGrad.addColorStop(0.5, '#d97706'); headGrad.addColorStop(1, '#451a03');
+                ctx.fillStyle = headGrad;
+                ctx.beginPath(); ctx.roundRect(-42, -26, 84, 28, 4); ctx.fill();
+                ctx.strokeStyle = '#fef3c7'; ctx.lineWidth = 2; ctx.stroke();
+
+            } else if (currentHammerType === 'plastic') {
+                let hGrad = ctx.createLinearGradient(0, 0, 0, 55);
+                hGrad.addColorStop(0, '#38bdf8'); hGrad.addColorStop(1, '#0369a1');
+                ctx.fillStyle = hGrad;
+                ctx.beginPath(); ctx.roundRect(-5, 0, 10, 56, 7); ctx.fill();
+                ctx.strokeStyle = '#075985'; ctx.lineWidth = 1.5; ctx.stroke();
+
+                let headGrad = ctx.createLinearGradient(-36, -26, 36, 0);
+                headGrad.addColorStop(0, '#fda4af'); headGrad.addColorStop(0.5, '#f43f5e'); headGrad.addColorStop(1, '#881337');
+                ctx.fillStyle = headGrad;
+                ctx.beginPath(); ctx.roundRect(-38, -25, 76, 28, 14); ctx.fill();
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.2; ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function changeHammer(type) {
+            currentHammerType = type;
+        }
+
+        function changeBackground(themeName) {
+            currentBgTheme = themeName;
+        }
+
+        function requestFullscreenAndLockLandscape() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        }
+
+        function startGame() {
+            requestFullscreenAndLockLandscape();
+            document.getElementById('start-screen').classList.add('hidden');
+            resetGame();
+        }
+
+        function resetGame() {
+            score = 0;
+            level = 1;
+            initLevel();
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function initLevel() {
+            cubes = [];
+            shards = [];
+            hammerHits = [];
+
+            let count = Math.min(1 + level, 4); 
+            let spacingX = 220;
+            let spacingY = 180;
+            let startX = WIDTH / 2 - ((count - 1) * spacingX) / 2;
+            let startY = HEIGHT / 2 - ((count - 1) * spacingY) / 2;
+
+            let availableThemes = [...CUBE_THEMES];
+
+            for (let r = 0; r < count; r++) {
+                for (let c = 0; c < count; c++) {
+                    let cx = startX + c * spacingX;
+                    let cy = startY + r * spacingY;
+                    
+                    if (availableThemes.length === 0) availableThemes = [...CUBE_THEMES];
+                    let tIndex = Math.floor(Math.random() * availableThemes.length);
+                    let theme = availableThemes.splice(tIndex, 1)[0];
+
+                    cubes.push(new Proper3DCube(cx, cy, 55, theme));
+                }
+            }
+        }
+
+        function handleSmash(clientX, clientY) {
+            if (gameState !== 'PLAYING') return;
+
+            const rect = canvas.getBoundingClientRect();
+            mouseX = clientX - rect.left;
+            mouseY = clientY - rect.top;
+
+            isSwinging = true;
+            swingFactor = 0;
+
+            for (let i = cubes.length - 1; i >= 0; i--) {
+                let cb = cubes[i];
+                if (cb.contains(mouseX, mouseY)) {
+                    score += 30;
+                    hammerHits.push(new HammerHitEffect(mouseX, mouseY));
+                    screenShakeTimer = currentHammerType === 'steel' ? 16 : 12;
+
+                    for (let s = 0; s < 10; s++) {
+                        shards.push(new GlassShard(mouseX, mouseY, cb.theme.gloss));
+                    }
+
+                    let isDestroyed = cb.hit(mouseX, mouseY);
+                    if (isDestroyed) {
+                        score += 250;
+                        for (let s = 0; s < 45; s++) {
+                            shards.push(new GlassShard(cb.baseX + cb.dx, cb.baseY + cb.dy, cb.theme.gloss));
+                        }
+                        cubes.splice(i, 1);
+                    }
+                    break;
+                }
+            }
+
+            if (cubes.length === 0 && gameState === 'PLAYING') {
+                score += 750;
+                level++;
+                setTimeout(initLevel, 400);
+            }
+
+            updateUI();
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('pointerdown', (e) => {
+            handleSmash(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            handleSmash(touch.clientX, touch.clientY);
+            e.preventDefault();
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+            e.preventDefault();
+        }, { passive: false });
+
+        function updateUI() {
+            document.getElementById('score-display').innerText = `Score: ${score}`;
+            document.getElementById('level-display').innerText = `Level: ${level}`;
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            let deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            shards.forEach(s => s.update());
+            shards = shards.filter(s => s.alpha > 0);
+
+            hammerHits.forEach(h => h.update());
+            hammerHits = hammerHits.filter(h => h.alpha > 0);
+
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            ctx.save();
+            if (screenShakeTimer > 0) {
+                let offsetX = (Math.random() - 0.5) * (screenShakeTimer * 2.5);
+                let offsetY = (Math.random() - 0.5) * (screenShakeTimer * 2.5);
+                ctx.translate(offsetX, offsetY);
+                screenShakeTimer--;
+            }
+
+            let colors = BACKGROUNDS[currentBgTheme] || BACKGROUNDS['midnight'];
+            let bgGrad = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+            bgGrad.addColorStop(0, colors[0]);
+            bgGrad.addColorStop(1, colors[1]);
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            cubes.forEach(cb => cb.draw());
+            hammerHits.forEach(h => h.draw());
+            shards.forEach(s => s.draw());
+            drawTool(mouseX, mouseY);
+
+            ctx.restore();
+
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>

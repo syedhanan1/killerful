@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Apex Range - High-Graphics Shooter's Club</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            overscroll-behavior: none;
+            background: #0f172a;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-center items-center overflow-hidden fixed touch-none font-sans text-white">
+
+    <!-- Game Container -->
+    <div id="game-container" class="relative shadow-[0_0_60px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="ui" class="absolute top-4 left-6 right-6 flex justify-between items-center pointer-events-none text-base font-black tracking-wider z-10 drop-shadow-md">
+            <div class="flex gap-6 items-center">
+                <div id="score-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-cyan-400">SCORE: 0</div>
+                <div id="ammo-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-amber-400">AMMO: 30/30</div>
+            </div>
+            <div class="flex gap-4 items-center">
+                <div id="health-display" class="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-rose-500">HP: ❤️❤️❤️</div>
+                <button class="pointer-events-auto bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer" onclick="resetGame()">RESET</button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 bg-[#0f172a]/95 backdrop-blur-2xl flex flex-col justify-center items-center text-center z-20 p-6">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(217,119,6,0.15)_0,transparent_70%)] pointer-events-none"></div>
+            <h1 class="text-5xl font-black mb-3 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent tracking-widest drop-shadow-[0_5px_20px_rgba(245,158,11,0.4)]">APEX SHOOTER'S CLUB</h1>
+            <p class="text-xs text-slate-400 max-w-md mb-8 leading-relaxed uppercase tracking-widest font-semibold">Cinematic Indoor Firing Range • Enhanced Tactical Firearms & HD Targets</p>
+            <button class="bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 text-slate-950 font-black py-4 px-10 text-lg rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_0_35px_rgba(245,158,11,0.5)] uppercase tracking-wider" onclick="startGame()">Enter Range</button>
+        </div>
+    </div>
+
+    <!-- Landscape Warning Overlay for Portrait Mobile Users -->
+    <div id="orientation-warning" class="fixed inset-0 bg-[#0f172a] z-50 hidden flex-col justify-center items-center text-center p-6">
+        <div class="text-5xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-xl font-black tracking-wider mb-2 text-amber-400">PLEASE ROTATE YOUR DEVICE</h2>
+        <p class="text-xs text-slate-400 max-w-xs leading-relaxed">This shooting club simulator requires landscape orientation for proper range perspective and touch controls.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        let score = 0;
+        let health = 3;
+        let ammo = 30;
+        let gameState = 'START';
+        let lastTime = 0;
+
+        let crosshairX = WIDTH / 2;
+        let crosshairY = HEIGHT / 2;
+
+        let targets = [];
+        let particles = [];
+        let bulletHoles = [];
+        let muzzleFlashTimer = 0;
+        let recoilOffsetY = 0; // Realistic gun kickback on shot
+
+        class Target {
+            constructor() {
+                this.x = Math.random() * (WIDTH - 300) + 150;
+                this.y = 130 + Math.random() * 160;
+                this.width = 75;
+                this.height = 110;
+                this.scale = 0.0; // Smooth popup slide/scale effect
+                this.maxLife = 200;
+                this.life = this.maxLife;
+                this.type = Math.random() > 0.7 ? 'terrorist' : 'bullseye';
+            }
+
+            update() {
+                if (this.scale < 1.0) {
+                    this.scale += 0.08;
+                }
+                this.life--;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale, this.scale);
+
+                // Realistic Cardboard Backer Shadow & Board
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+                ctx.shadowBlur = 15;
+                ctx.fillStyle = '#c2a678'; // Cardboard tan color
+                ctx.strokeStyle = '#856536';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(-this.width/2, -this.height/2, this.width, this.height, 8);
+                ctx.fill();
+                ctx.stroke();
+
+                if (this.type === 'bullseye') {
+                    // Professional Competition Bullseye Print on Cardboard
+                    const cx = 0, cy = 0;
+                    
+                    // Outer Black Ring
+                    ctx.fillStyle = '#111827';
+                    ctx.beginPath(); ctx.arc(cx, cy, 32, 0, Math.PI * 2); ctx.fill();
+
+                    // White Ring
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2); ctx.fill();
+
+                    // Inner Red Scoring Rings
+                    ctx.fillStyle = '#dc2626';
+                    ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI * 2); ctx.fill();
+
+                    // X-Ring Center
+                    ctx.fillStyle = '#fef08a';
+                    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+                    // Scoring Ring Lines
+                    ctx.strokeStyle = '#94a3b8';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2); ctx.stroke();
+                } else {
+                    // Tactical Silhouette Target (Detailed tactical dummy print)
+                    // Head
+                    ctx.fillStyle = '#1e293b';
+                    ctx.beginPath();
+                    ctx.arc(0, -32, 16, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Torso Body
+                    ctx.beginPath();
+                    ctx.roundRect(-24, -12, 48, 55, 6);
+                    ctx.fill();
+
+                    // Vital Hit Zone Box overlay
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(-12, -2, 24, 32);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                let angle = Math.random() * Math.PI * 2;
+                let speed = 1 + Math.random() * 5;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1.0;
+                this.decay = 0.03 + Math.random() * 0.04;
+                this.size = 1.5 + Math.random() * 3.5;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function requestFullscreenAndLockLandscape() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        }
+
+        function checkOrientation() {
+            const warning = document.getElementById('orientation-warning');
+            if (window.innerHeight > window.innerWidth && window.innerWidth < 900) {
+                warning.classList.remove('hidden');
+                warning.classList.add('flex');
+            } else {
+                warning.classList.remove('flex');
+                warning.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('resize', checkOrientation);
+        window.addEventListener('orientationchange', checkOrientation);
+
+        function startGame() {
+            requestFullscreenAndLockLandscape();
+            document.getElementById('start-screen').classList.add('hidden');
+            resetGame();
+        }
+
+        function resetGame() {
+            score = 0;
+            health = 3;
+            ammo = 30;
+            targets = [];
+            particles = [];
+            bulletHoles = [];
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handleShoot(clientX, clientY) {
+            if (gameState !== 'PLAYING') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = WIDTH / rect.width;
+            const scaleY = HEIGHT / rect.height;
+            crosshairX = (clientX - rect.left) * scaleX;
+            crosshairY = (clientY - rect.top) * scaleY;
+
+            if (ammo <= 0) {
+                ammo = 30; // Auto reload clip
+                updateUI();
+                return;
+            }
+
+            ammo--;
+            muzzleFlashTimer = 4;
+            recoilOffsetY = 18; // Kick gun upward on shot
+
+            bulletHoles.push({ x: crosshairX, y: crosshairY, alpha: 1.0 });
+            if (bulletHoles.length > 25) bulletHoles.shift();
+
+            let hit = false;
+            for (let i = targets.length - 1; i >= 0; i--) {
+                let t = targets[i];
+                // Hitbox check based on target card dimensions
+                if (
+                    crosshairX >= t.x - (t.width/2 * t.scale) &&
+                    crosshairX <= t.x + (t.width/2 * t.scale) &&
+                    crosshairY >= t.y - (t.height/2 * t.scale) &&
+                    crosshairY <= t.y + (t.height/2 * t.scale)
+                ) {
+                    hit = true;
+                    score += t.type === 'terrorist' ? 200 : 100;
+
+                    for (let p = 0; p < 18; p++) {
+                        particles.push(new Particle(crosshairX, crosshairY, '#c2a678')); // Cardboard debris
+                    }
+
+                    targets.splice(i, 1);
+                    break;
+                }
+            }
+
+            if (!hit) {
+                for (let p = 0; p < 6; p++) {
+                    particles.push(new Particle(crosshairX, crosshairY, '#64748b'));
+                }
+            }
+
+            updateUI();
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            handleShoot(e.clientX, e.clientY);
+        });
+
+        function updateUI() {
+            document.getElementById('score-display').innerText = `SCORE: ${score}`;
+            document.getElementById('ammo-display').innerText = `AMMO: ${ammo}/30`;
+            let hearts = '❤️'.repeat(Math.max(0, health));
+            document.getElementById('health-display').innerText = `HP: ${hearts}`;
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            let deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Recoil recovery smoothing
+            if (recoilOffsetY > 0) {
+                recoilOffsetY *= 0.75;
+            }
+
+            // Spawn targets gradually
+            if (Math.random() < 0.028) {
+                targets.push(new Target());
+            }
+
+            targets.forEach((t, index) => {
+                t.update();
+                if (t.life <= 0) {
+                    targets.splice(index, 1);
+                    health--;
+                    updateUI();
+                    if (health <= 0) {
+                        gameState = 'GAMEOVER';
+                    }
+                }
+            });
+
+            particles.forEach(p => p.update());
+            particles = particles.filter(p => p.alpha > 0);
+
+            bulletHoles.forEach(bh => bh.alpha -= 0.0012);
+            bulletHoles = bulletHoles.filter(bh => bh.alpha > 0);
+
+            // Render Frame - Shooter's Club Indoor Firing Range Environment
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            // Ceiling / Overhead baffle lights
+            let ceilingGrad = ctx.createLinearGradient(0, 0, 0, 110);
+            ceilingGrad.addColorStop(0, '#020617');
+            ceilingGrad.addColorStop(1, '#1e293b');
+            ctx.fillStyle = ceilingGrad;
+            ctx.fillRect(0, 0, WIDTH, 110);
+
+            // Warm professional fluorescent range ceiling strips
+            ctx.fillStyle = 'rgba(254, 240, 138, 0.18)';
+            ctx.fillRect(180, 0, 220, 110);
+            ctx.fillRect(560, 0, 220, 110);
+
+            // Steel Bullet Trap Backstop at rear
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 110, WIDTH, 230);
+
+            // Target tracks / overhead carrier cables on the ceiling
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, 110); ctx.lineTo(WIDTH, 110);
+            ctx.stroke();
+
+            // Concrete Shooting Booth Divider Walls (Perspective view from inside lane)
+            let boothGrad = ctx.createLinearGradient(0, 200, 0, HEIGHT);
+            boothGrad.addColorStop(0, '#1e293b');
+            boothGrad.addColorStop(1, '#0f172a');
+            ctx.fillStyle = boothGrad;
+            ctx.beginPath();
+            ctx.moveTo(0, 310); ctx.lineTo(240, HEIGHT); ctx.lineTo(0, HEIGHT);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(WIDTH, 310); ctx.lineTo(WIDTH - 240, HEIGHT); ctx.lineTo(WIDTH, HEIGHT);
+            ctx.fill();
+
+            // Heavy Wooden Shooting Bench Shelf in foreground
+            ctx.fillStyle = '#381c02';
+            ctx.fillRect(160, HEIGHT - 50, WIDTH - 320, 50);
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(160, HEIGHT - 60, WIDTH - 320, 10);
+
+            // Draw targets
+            targets.forEach(t => t.draw());
+
+            // Draw bullet impact holes on targets or backstop
+            bulletHoles.forEach(bh => {
+                ctx.save();
+                ctx.globalAlpha = bh.alpha;
+                ctx.fillStyle = '#000000';
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(bh.x, bh.y, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            particles.forEach(p => p.draw());
+
+            // ----------------------------------------------------
+            // HIGH-DETAIL REALISTIC FIRST-PERSON PISTOL MODEL
+            // ----------------------------------------------------
+            ctx.save();
+            ctx.translate(WIDTH / 2, HEIGHT - 15 + recoilOffsetY);
+
+            // Pistol Grip (Polymer textured frame angled downward-right)
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.roundRect(-22, -20, 44, 75, [4, 4, 12, 12]);
+            ctx.fill();
+
+            // Grip checkering lines for realism
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1.5;
+            for(let gy = -10; gy < 40; gy += 8) {
+                ctx.beginPath(); ctx.moveTo(-18, gy); ctx.lineTo(18, gy+4); ctx.stroke();
+            }
+
+            // Trigger Guard & Trigger
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(0, -25, 16, 0, Math.PI);
+            ctx.stroke();
+
+            // Metal Slide & Barrel Housing (Dark matte tactical finish with metallic highlights)
+            let slideGrad = ctx.createLinearGradient(-30, -110, 30, -50);
+            slideGrad.addColorStop(0, '#334155');
+            slideGrad.addColorStop(0.5, '#64748b');
+            slideGrad.addColorStop(1, '#1e293b');
+            ctx.fillStyle = slideGrad;
+            ctx.beginPath();
+            ctx.roundRect(-28, -100, 56, 75, 6);
+            ctx.fill();
+
+            // Slide Serrations (Rear grip ridges on pistol slide)
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 2;
+            for(let sx = -22; sx <= 22; sx += 7) {
+                ctx.beginPath(); ctx.moveTo(sx, -92); ctx.lineTo(sx, -55); ctx.stroke();
+            }
+
+            // Iron Sights (Front & Rear sights on top of slide)
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(-4, -108, 8, 8); // Front sight post with fiber dot
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(-2, -106, 4, 3); // Glowing fiber optic dot
+
+            // Muzzle Flash Effect when firing
+            if (muzzleFlashTimer > 0) {
+                muzzleFlashTimer--;
+                ctx.shadowColor = '#f59e0b';
+                ctx.shadowBlur = 40;
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.arc(0, -125, 28 + Math.random() * 14, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+
+            // Precision Crosshair Reticle
+            ctx.save();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(crosshairX, crosshairY, 16, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(crosshairX - 22, crosshairY); ctx.lineTo(crosshairX - 6, crosshairY);
+            ctx.moveTo(crosshairX + 6, crosshairY); ctx.lineTo(crosshairX + 22, crosshairY);
+            ctx.moveTo(crosshairX, crosshairY - 22); ctx.lineTo(crosshairX, crosshairY - 6);
+            ctx.moveTo(crosshairX, crosshairY + 6); ctx.lineTo(crosshairX, crosshairY + 22);
+            ctx.stroke();
+            ctx.restore();
+
+            if (gameState === 'GAMEOVER') {
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '900 42px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 20;
+                ctx.fillText('RANGE SESSION OVER', WIDTH / 2, HEIGHT / 2 - 30);
+
+                ctx.font = '700 20px sans-serif';
+                ctx.fillStyle = '#cbd5e1';
+                ctx.shadowBlur = 10;
+                ctx.fillText(`Final Score: ${score}`, WIDTH / 2, HEIGHT / 2 + 15);
+
+                ctx.font = '600 14px sans-serif';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('Tap Reset above to start a new session', WIDTH / 2, HEIGHT / 2 + 60);
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        checkOrientation();
+    </script>
+</body>
+</html>

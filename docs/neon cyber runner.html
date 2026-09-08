@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Cyber Runner | Killerful.com</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col justify-between font-sans antialiased">
+
+    <!-- Top Bar -->
+    <header class="w-full max-w-md mx-auto px-4 py-3 flex justify-between items-center z-10">
+        <a href="/" class="text-lg font-black tracking-wider text-rose-500 uppercase">
+            Killer<span class="text-white">ful</span>
+        </a>
+        <div class="flex space-x-6 text-sm font-bold tracking-wider">
+            <div>SCORE: <span id="scoreVal" class="text-rose-400">0</span></div>
+            <div>BEST: <span id="highScoreVal" class="text-cyan-400">0</span></div>
+        </div>
+    </header>
+
+    <!-- Game Canvas Wrapper -->
+    <main class="flex-grow flex items-center justify-center relative px-2">
+        <div class="relative w-full max-w-md aspect-[9/16] bg-slate-900 border-2 border-slate-800 rounded-2xl overflow-hidden shadow-2xl shadow-rose-950/40">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- Start / Game Over Overlay -->
+            <div id="menuOverlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-20">
+                <span class="text-xs uppercase tracking-widest text-rose-500 font-bold mb-2">⚡ Instant Play Arcade</span>
+                <h1 class="text-3xl sm:text-4xl font-black text-white tracking-tight mb-2">Neon Cyber Runner</h1>
+                <p id="menuDesc" class="text-xs sm:text-sm text-slate-400 mb-6 max-w-xs">Tap left/right or use arrow keys to dodge cyber spikes and survive the grid.</p>
+                <button id="startBtn" class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-extrabold text-base py-3 px-8 rounded-xl shadow-lg shadow-rose-600/40 transition">
+                    START RUN
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Mobile Touch Controls Footer -->
+    <footer class="w-full max-w-md mx-auto p-4 flex gap-4 z-10">
+        <button id="leftBtn" class="flex-1 bg-slate-900 active:bg-rose-600/30 border border-slate-800 active:border-rose-500 text-white font-bold py-4 rounded-xl text-xl transition shadow-md select-none">
+            ◀
+        </button>
+        <button id="rightBtn" class="flex-1 bg-slate-900 active:bg-rose-600/30 border border-slate-800 active:border-rose-500 text-white font-bold py-4 rounded-xl text-xl transition shadow-md select-none">
+            ▶
+        </button>
+    </footer>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI elements
+        const scoreVal = document.getElementById('scoreVal');
+        const highScoreVal = document.getElementById('highScoreVal');
+        const menuOverlay = document.getElementById('menuOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const menuDesc = document.getElementById('menuDesc');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+
+        // Handle high score storage
+        let highScore = localStorage.getItem('cyber_highScore') || 0;
+        highScoreVal.textContent = highScore;
+
+        // Canvas scaling setup for crisp rendering
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Game State
+        let gameRunning = false;
+        let score = 0;
+        let obstacles = [];
+        let particles = [];
+        let frameCount = 0;
+        let speed = 5;
+
+        // Player configuration (3 lanes)
+        const lanes = [0.2, 0.5, 0.8]; // relative ratios
+        let currentLane = 1;
+
+        const player = {
+            radius: 16,
+            yRatio: 0.82,
+            color: '#f43f5e' // rose-500
+        };
+
+        function getLaneX(laneIndex) {
+            return (canvas.clientWidth / 3) * laneIndex + (canvas.clientWidth / 6);
+        }
+
+        // Input controls
+        function moveLeft() {
+            if (!gameRunning) return;
+            if (currentLane > 0) currentLane--;
+        }
+
+        function moveRight() {
+            if (!gameRunning) return;
+            if (currentLane < 2) currentLane++;
+        }
+
+        leftBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); moveLeft(); });
+        rightBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); moveRight(); });
+
+        window.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft();
+            if (e.key === 'ArrowRight' || e.key === 'd') moveRight();
+        });
+
+        startBtn.addEventListener('click', startGame);
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            speed = 6;
+            obstacles = [];
+            particles = [];
+            frameCount = 0;
+            currentLane = 1;
+            scoreVal.textContent = score;
+            menuOverlay.classList.add('hidden');
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                localStorage.setItem('cyber_highScore', highScore);
+                highScoreVal.textContent = highScore;
+            }
+            menuDesc.innerHTML = `Game Over! Your Score: <span class="text-white font-bold">${Math.floor(score)}</span>`;
+            startBtn.textContent = 'PLAY AGAIN';
+            menuOverlay.classList.remove('hidden');
+        }
+
+        // Obstacle generator
+        function spawnObstacle() {
+            const lane = Math.floor(Math.random() * 3);
+            obstacles.push({
+                lane: lane,
+                y: -50,
+                width: canvas.clientWidth * 0.22,
+                height: 30,
+                color: '#06b6d4' // cyan-500
+            });
+        }
+
+        // Particle effect generator
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    alpha: 1,
+                    color: color,
+                    size: Math.random() * 3 + 1
+                });
+            }
+        }
+
+        // Main Game Loop
+        function update() {
+            if (!gameRunning) return;
+
+            frameCount++;
+            score += 0.1;
+            scoreVal.textContent = Math.floor(score);
+
+            // Progressive difficulty
+            speed = 6 + Math.floor(score / 100) * 0.8;
+
+            // Spawn obstacles frequency based on speed
+            if (frameCount % Math.max(30, Math.floor(70 - speed * 2)) === 0) {
+                spawnObstacle();
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].y += speed;
+
+                const targetX = getLaneX(obstacles[i].lane);
+                const playerX = getLaneX(currentLane);
+                const playerY = canvas.clientHeight * player.yRatio;
+
+                // Collision detection (AABB vs Circle approximation)
+                const obsLeft = targetX - obstacles[i].width / 2;
+                const obsRight = targetX + obstacles[i].width / 2;
+                const obsTop = obstacles[i].y;
+                const obsBottom = obstacles[i].y + obstacles[i].height;
+
+                if (
+                    playerX + player.radius > obsLeft &&
+                    playerX - player.radius < obsRight &&
+                    playerY + player.radius > obsTop &&
+                    playerY - player.radius < obsBottom
+                ) {
+                    createParticles(playerX, playerY, '#f43f5e');
+                    gameOver();
+                }
+
+                // Remove off-screen obstacles
+                if (obstacles[i].y > canvas.clientHeight) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].x += particles[i].vx;
+                particles[i].y += particles[i].vy;
+                particles[i].alpha -= 0.03;
+                if (particles[i].alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+            // Draw Cyber Grid Lines (Background Effect)
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            const gridOffset = (frameCount * speed * 0.5) % 40;
+            
+            for (let y = gridOffset; y < canvas.clientHeight; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.clientWidth, y);
+                ctx.stroke();
+            }
+
+            for (let i = 1; i < 3; i++) {
+                const x = (canvas.clientWidth / 3) * i;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.clientHeight);
+                ctx.stroke();
+            }
+
+            // Draw Obstacles
+            obstacles.forEach(obs => {
+                const x = getLaneX(obs.lane);
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = obs.color;
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(x - obs.width / 2, obs.y, obs.width, obs.height);
+                ctx.restore();
+            });
+
+            // Draw Player
+            const playerX = getLaneX(currentLane);
+            const playerY = canvas.clientHeight * player.yRatio;
+
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+                ctx.restore();
+            });
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>

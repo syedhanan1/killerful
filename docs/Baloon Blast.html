@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>High-Graphics Balloon Blast</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            overscroll-behavior: none;
+            background: #05050a;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-center items-center overflow-hidden fixed touch-none font-sans text-white">
+
+    <!-- Game Container -->
+    <div id="game-container" class="relative shadow-[0_0_50px_rgba(0,0,0,0.9)] rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="ui" class="absolute top-4 left-6 right-6 flex justify-between items-center pointer-events-none text-base font-black tracking-wider z-10 drop-shadow-md">
+            <div class="flex gap-6 items-center">
+                <div id="score-display" class="bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-amber-400">SCORE: 0</div>
+                <div id="combo-display" class="bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-cyan-400">COMBO: x1</div>
+            </div>
+            <div class="flex gap-4 items-center">
+                <div id="lives-display" class="bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-rose-500">LIVES: ❤️❤️❤️</div>
+                <button class="pointer-events-auto bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer" onclick="resetGame()">RESET</button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 bg-[#05050a]/95 backdrop-blur-xl flex flex-col justify-center items-center text-center z-20 p-6">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.15)_0,transparent_70%)] pointer-events-none"></div>
+            <h1 class="text-5xl font-black mb-3 bg-gradient-to-r from-rose-400 via-amber-300 to-cyan-400 bg-clip-text text-transparent tracking-widest drop-shadow-[0_5px_15px_rgba(255,255,255,0.2)]">BALLOON BLAST</h1>
+            <p class="text-xs text-slate-400 max-w-md mb-8 leading-relaxed uppercase tracking-widest font-semibold">Cinematic High-Graphics Experience • Mobile Landscape Optimized</p>
+            <button class="bg-gradient-to-r from-rose-500 via-amber-500 to-cyan-500 text-slate-950 font-black py-4 px-10 text-lg rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(244,63,94,0.5)] uppercase tracking-wider" onclick="startGame()">Start Popping</button>
+        </div>
+    </div>
+
+    <!-- Landscape Warning Overlay for Portrait Mobile Users -->
+    <div id="orientation-warning" class="fixed inset-0 bg-[#05050a] z-50 hidden flex-col justify-center items-center text-center p-6">
+        <div class="text-5xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-xl font-black tracking-wider mb-2 text-amber-400">PLEASE ROTATE YOUR DEVICE</h2>
+        <p class="text-xs text-slate-400 max-w-xs leading-relaxed">This game is engineered strictly for landscape orientation for optimal cinematic graphics and controls.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        let score = 0;
+        let lives = 3;
+        let combo = 1;
+        let comboTimer = 0;
+        let gameState = 'START';
+        let lastTime = 0;
+
+        let balloons = [];
+        let particles = [];
+        let floaters = [];
+        let ripples = [];
+
+        const BALLOON_TYPES = [
+            { color: '#f43f5e', glow: '#fb7185', points: 10, speed: 1.8, radius: 36, rare: false },
+            { color: '#06b6d4', glow: '#67e8f9', points: 15, speed: 2.2, radius: 32, rare: false },
+            { color: '#10b981', glow: '#6ee7b7', points: 20, speed: 2.6, radius: 28, rare: false },
+            { color: '#8b5cf6', glow: '#c4b5fd', points: 30, speed: 3.1, radius: 24, rare: false },
+            { color: '#f59e0b', glow: '#fde047', points: 50, speed: 3.8, radius: 20, rare: true } // Golden Rare Balloon
+        ];
+
+        class Balloon {
+            constructor() {
+                let typeWeights = Math.random();
+                let def = typeWeights > 0.85 ? BALLOON_TYPES[4] : BALLOON_TYPES[Math.floor(Math.random() * 4)];
+                
+                this.x = Math.random() * (WIDTH - 120) + 60;
+                this.y = HEIGHT + def.radius + Math.random() * 50;
+                this.radius = def.radius;
+                this.speed = def.speed + (score / 500); // Scale difficulty with score
+                this.color = def.color;
+                this.glow = def.glow;
+                this.points = def.points;
+                this.rare = def.rare;
+                this.wobbleSpeed = 0.03 + Math.random() * 0.04;
+                this.wobbleDist = 20 + Math.random() * 30;
+                this.initialX = this.x;
+                this.age = Math.random() * 100;
+                this.stringLen = 45 + Math.random() * 20;
+            }
+
+            update() {
+                this.y -= this.speed;
+                this.age += this.wobbleSpeed;
+                this.x = this.initialX + Math.sin(this.age) * this.wobbleDist;
+            }
+
+            draw() {
+                ctx.save();
+                
+                // Draw string with curve
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y + this.radius);
+                ctx.quadraticCurveTo(this.x + Math.sin(this.age * 2) * 10, this.y + this.radius + this.stringLen / 2, this.x, this.y + this.radius + this.stringLen);
+                ctx.stroke();
+
+                // Balloon Body Shadow & Glow
+                ctx.shadowColor = this.glow;
+                ctx.shadowBlur = this.rare ? 30 : 15;
+
+                // 3D Spherical Radial Gradient
+                let gradX = this.x - this.radius * 0.3;
+                let gradY = this.y - this.radius * 0.3;
+                let balloonGrad = ctx.createRadialGradient(gradX, gradY, this.radius * 0.05, this.x, this.y, this.radius * 1.1);
+                balloonGrad.addColorStop(0, '#ffffff');
+                balloonGrad.addColorStop(0.3, this.glow);
+                balloonGrad.addColorStop(0.7, this.color);
+                balloonGrad.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+
+                ctx.fillStyle = balloonGrad;
+                
+                // Draw egg/balloon shape
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, this.radius, this.radius * 1.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Specular Highlight Overlay (Glass Gloss)
+                let glossGrad = ctx.createRadialGradient(this.x - this.radius * 0.35, this.y - this.radius * 0.45, 2, this.x - this.radius * 0.35, this.y - this.radius * 0.45, this.radius * 0.5);
+                glossGrad.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                glossGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = glossGrad;
+                ctx.beginPath();
+                ctx.ellipse(this.x - this.radius * 0.3, this.y - this.radius * 0.4, this.radius * 0.3, this.radius * 0.4, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Balloon Knot
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(this.x - 4, this.y + this.radius * 1.2);
+                ctx.lineTo(this.x + 4, this.y + this.radius * 1.2);
+                ctx.lineTo(this.x + 2, this.y + this.radius * 1.25 + 4);
+                ctx.lineTo(this.x - 2, this.y + this.radius * 1.25 + 4);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            contains(px, py) {
+                let dy = (py - this.y) / 1.2; // Account for elliptical shape
+                let dx = px - this.x;
+                return (dx * dx + dy * dy) <= (this.radius * this.radius);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                let angle = Math.random() * Math.PI * 2;
+                let speed = 2 + Math.random() * 8;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1.0;
+                this.decay = 0.02 + Math.random() * 0.03;
+                this.size = 3 + Math.random() * 5;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.15; // Gravity
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color;
+                this.alpha = 1.0;
+                this.vy = -1.5;
+            }
+
+            update() {
+                this.y += this.vy;
+                this.alpha -= 0.025;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.font = '900 18px sans-serif';
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 12;
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        class RippleEffect {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = 10;
+                this.alpha = 1.0;
+                this.color = color;
+            }
+
+            update() {
+                this.radius += 5;
+                this.alpha -= 0.05;
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 3;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        function requestFullscreenAndLockLandscape() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        }
+
+        function checkOrientation() {
+            const warning = document.getElementById('orientation-warning');
+            if (window.innerHeight > window.innerWidth && window.innerWidth < 900) {
+                warning.classList.remove('hidden');
+                warning.classList.add('flex');
+            } else {
+                warning.classList.remove('flex');
+                warning.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('resize', checkOrientation);
+        window.addEventListener('orientationchange', checkOrientation);
+
+        function startGame() {
+            requestFullscreenAndLockLandscape();
+            document.getElementById('start-screen').classList.add('hidden');
+            resetGame();
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            combo = 1;
+            comboTimer = 0;
+            balloons = [];
+            particles = [];
+            floaters = [];
+            ripples = [];
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handleBlast(clientX, clientY) {
+            if (gameState !== 'PLAYING') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = WIDTH / rect.width;
+            const scaleY = HEIGHT / rect.height;
+            const clickX = (clientX - rect.left) * scaleX;
+            const clickY = (clientY - rect.top) * scaleY;
+
+            let hitAny = false;
+
+            for (let i = balloons.length - 1; i >= 0; i--) {
+                let b = balloons[i];
+                if (b.contains(clickX, clickY)) {
+                    hitAny = true;
+                    score += b.points * combo;
+                    combo++;
+                    comboTimer = 120; // Frames to maintain combo
+
+                    ripples.push(new RippleEffect(b.x, b.y, b.glow));
+                    floaters.push(new FloatingText(b.x, b.y, `+${b.points * combo}`, b.glow));
+
+                    for (let p = 0; p < 25; p++) {
+                        particles.push(new Particle(b.x, b.y, b.glow));
+                    }
+
+                    balloons.splice(i, 1);
+                    break;
+                }
+            }
+
+            if (!hitAny) {
+                combo = 1; // Reset combo on miss
+            }
+
+            updateUI();
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            handleBlast(e.clientX, e.clientY);
+        });
+
+        function updateUI() {
+            document.getElementById('score-display').innerText = `SCORE: ${score}`;
+            document.getElementById('combo-display').innerText = `COMBO: x${combo}`;
+            let hearts = '❤️'.repeat(Math.max(0, lives));
+            document.getElementById('lives-display').innerText = `LIVES: ${hearts}`;
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            let deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Handle Combo Timer
+            if (comboTimer > 0) {
+                comboTimer--;
+                if (comboTimer === 0) combo = 1;
+            }
+
+            // Spawn Balloons dynamically
+            if (Math.random() < 0.035 + (score / 10000)) {
+                balloons.push(new Balloon());
+            }
+
+            // Update entities
+            balloons.forEach((b, index) => {
+                b.update();
+                // Check if balloon escaped top screen
+                if (b.y < -60) {
+                    balloons.splice(index, 1);
+                    lives--;
+                    combo = 1;
+                    updateUI();
+                    if (lives <= 0) {
+                        gameState = 'GAMEOVER';
+                    }
+                }
+            });
+
+            particles.forEach(p => p.update());
+            particles = particles.filter(p => p.alpha > 0);
+
+            floaters.forEach(f => f.update());
+            floaters = floaters.filter(f => f.alpha > 0);
+
+            ripples.forEach(r => r.update());
+            ripples = ripples.filter(r => r.alpha > 0);
+
+            // Render Frame
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            // Cinematic Background Gradient
+            let bgGrad = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+            bgGrad.addColorStop(0, '#0a0a16');
+            bgGrad.addColorStop(0.5, '#0f0c1b');
+            bgGrad.addColorStop(1, '#180e24');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // Background ambient particles or stars
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fillRect(100, 100, 2, 2);
+            ctx.fillRect(400, 200, 1.5, 1.5);
+            ctx.fillRect(750, 80, 2, 2);
+            ctx.fillRect(850, 400, 1.5, 1.5);
+
+            // Draw all game objects
+            ripples.forEach(r => r.draw());
+            balloons.forEach(b => b.draw());
+            particles.forEach(p => p.draw());
+            floaters.forEach(f => f.draw());
+
+            if (gameState === 'GAMEOVER') {
+                ctx.fillStyle = 'rgba(5, 5, 10, 0.9)';
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '900 42px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 20;
+                ctx.fillText('GAME OVER', WIDTH / 2, HEIGHT / 2 - 30);
+
+                ctx.font = '700 20px sans-serif';
+                ctx.fillStyle = '#cbd5e1';
+                ctx.shadowBlur = 10;
+                ctx.fillText(`Final Score: ${score}`, WIDTH / 2, HEIGHT / 2 + 15);
+
+                // Restart Prompt via UI or Touch
+                ctx.font = '600 14px sans-serif';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('Tap Reset above to play again', WIDTH / 2, HEIGHT / 2 + 60);
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initial check on load
+        checkOrientation();
+    </script>
+</body>
+</html>

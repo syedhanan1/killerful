@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Duck Hunt - Fullscreen Landscape Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * { box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background-color: #080c14; color: #ffffff; font-family: 'Courier New', Courier, monospace; overflow: hidden; touch-action: none; position: fixed; width: 100%; height: 100%; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        .ui-layer { position: absolute; z-index: 10; pointer-events: none; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px); }
+        .interactive { pointer-events: auto; }
+        
+        #touch-surface {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: none;
+        }
+
+        .crosshair {
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            border: 2px solid rgba(239, 68, 68, 0.85);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 25;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+            transition: transform 0.05s ease-out;
+        }
+        .crosshair::before, .crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(239, 68, 68, 0.85);
+        }
+        .crosshair::before { width: 14px; height: 2px; }
+        .crosshair::after { width: 2px; height: 14px; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="touch-surface"></div>
+    <div id="crosshair" class="crosshair" style="left: 50%; top: 50%;"></div>
+
+    <div class="ui-layer">
+        <div class="flex justify-between items-center w-full max-w-lg mx-auto">
+            <div class="bg-black/85 border-2 border-amber-600/60 px-4 py-2 text-white shadow-2xl flex gap-4 sm:gap-6 font-bold tracking-widest text-xs sm:text-sm backdrop-blur-md items-center rounded-lg">
+                <div>
+                    <p class="text-[9px] text-red-500">SCORE</p>
+                    <p id="score-val">000000</p>
+                </div>
+                <div>
+                    <p class="text-[9px] text-amber-400">AMMO</p>
+                    <p id="ammo-val">***</p>
+                </div>
+                <div>
+                    <button onclick="toggleTheme()" id="theme-btn" class="interactive bg-zinc-800 hover:bg-zinc-700 text-[10px] sm:text-xs px-2.5 py-1 border border-amber-600/50 rounded transition text-amber-400">DAY</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="overlay-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md interactive p-4">
+            <div class="text-center p-6 sm:p-8 rounded-xl border-2 border-amber-600/40 bg-zinc-950/95 shadow-2xl max-w-sm w-full">
+                <h1 id="screen-title" class="text-2xl sm:text-3xl font-black tracking-widest text-amber-500 mb-3 drop-shadow-[2px_2px_0_#000]">DUCK HUNT 3D</h1>
+                <p id="screen-subtitle" class="text-[11px] sm:text-xs text-zinc-300 mb-6 leading-relaxed">FULLSCREEN LANDSCAPE EDITION<br>AUTO-ROTATES TO LANDSCAPE ON START</p>
+                <button onclick="startGame()" class="w-full bg-red-700 text-white font-black tracking-widest py-3 rounded border border-red-500 hover:bg-red-600 transition shadow-lg text-sm">START HUNT</button>
+            </div>
+        </div>
+
+        <div class="flex justify-center pb-1">
+            <div class="bg-black/60 border border-white/20 px-3 py-0.5 text-[9px] sm:text-[10px] text-zinc-300 tracking-widest backdrop-blur-sm rounded">
+                AUTO FULLSCREEN & LANDSCAPE LOCKED • PBR
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer;
+        let gameStarted = false, gameOver = false;
+        let score = 0, ammo = 3;
+        let duckGroup, duckWingL, duckWingR;
+        let duckActive = false;
+        let duckX = 0, duckY = 0, duckZ = -5;
+        let duckVx = 0.05, duckVy = 0.03;
+        let duckState = 'flying';
+        let fallTimer = 0;
+        let raycaster, mouse;
+        const crosshair = document.getElementById('crosshair');
+
+        let isNight = false;
+        let sunLight, ambientLight, rimLight;
+        let sunMesh, moonMesh, starsMesh, rainSystem, cloudGroup;
+        let leafClusters = [];
+        let clouds = [];
+
+        let skyColors = {
+            day: new THREE.Color(0x38bdf8),
+            night: new THREE.Color(0x050b14)
+        };
+
+        initGraphics();
+        initScene();
+        setupEvents();
+        animate();
+
+        function initGraphics() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = skyColors.day;
+            scene.fog = new THREE.FogExp2(0x38bdf8, 0.015);
+
+            camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function initScene() {
+            ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+            scene.add(ambientLight);
+
+            sunLight = new THREE.DirectionalLight(0xfffaed, 2.2);
+            sunLight.position.set(20, 30, 15);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 1024;
+            sunLight.shadow.mapSize.height = 1024;
+            scene.add(sunLight);
+
+            rimLight = new THREE.DirectionalLight(0xffddaa, 0.8);
+            rimLight.position.set(-10, 5, -10);
+            scene.add(rimLight);
+
+            createEnvironment();
+            createRealisticMallardDuck();
+            createAtmosphereElements();
+        }
+
+        function createEnvironment() {
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e3f20, roughness: 0.85, metalness: 0.1 });
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -3;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            for (let i = 0; i < 22; i++) {
+                const angle = (i / 22) * Math.PI * 2;
+                const dist = 12 + Math.random() * 12;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist - 5;
+
+                if (i % 2 === 0) {
+                    createUltraRealisticPine(x, z);
+                } else {
+                    createUltraRealisticOakWithLeaves(x, z);
+                }
+            }
+        }
+
+        function createUltraRealisticPine(x, z) {
+            const group = new THREE.Group();
+            const barkMat = new THREE.MeshStandardMaterial({ color: 0x2b1d16, roughness: 0.95 });
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 5.5, 8), barkMat);
+            trunk.position.y = -0.25;
+            trunk.castShadow = true;
+            group.add(trunk);
+
+            const pineMat = new THREE.MeshStandardMaterial({ color: 0x112914, roughness: 0.75 });
+            for (let j = 0; j < 5; j++) {
+                const radius = 1.7 - j * 0.32;
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, 1.6, 8), pineMat);
+                cone.position.y = 1.0 + (j * 0.95);
+                cone.castShadow = true;
+                group.add(cone);
+            }
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+        }
+
+        function createUltraRealisticOakWithLeaves(x, z) {
+            const group = new THREE.Group();
+            const barkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.9 });
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 4, 8), barkMat);
+            trunk.position.y = -1;
+            trunk.castShadow = true;
+            group.add(trunk);
+
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x275223, roughness: 0.65, side: THREE.DoubleSide });
+            const leafGeo = new THREE.PlaneGeometry(0.3, 0.3);
+
+            for (let c = 0; c < 4; c++) {
+                const clusterCenter = new THREE.Vector3(
+                    (Math.random() - 0.5) * 1.5,
+                    1.5 + Math.random() * 1.5,
+                    (Math.random() - 0.5) * 1.5
+                );
+
+                const clusterGroup = new THREE.Group();
+                for (let l = 0; l < 15; l++) {
+                    const leaf = new THREE.Mesh(leafGeo, leafMat);
+                    leaf.position.set(
+                        clusterCenter.x + (Math.random() - 0.5) * 1.2,
+                        clusterCenter.y + (Math.random() - 0.5) * 1.2,
+                        clusterCenter.z + (Math.random() - 0.5) * 1.2
+                    );
+                    leaf.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+                    clusterGroup.add(leaf);
+                }
+                group.add(clusterGroup);
+                leafClusters.push(clusterGroup);
+            }
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+        }
+
+        function createAtmosphereElements() {
+            const sunGeo = new THREE.SphereGeometry(3, 32, 32);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb });
+            sunMesh = new THREE.Mesh(sunGeo, sunMat);
+            sunMesh.position.set(25, 30, -40);
+            scene.add(sunMesh);
+
+            const moonGeo = new THREE.SphereGeometry(2.5, 32, 32);
+            const moonMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d8, roughness: 0.9, emissive: 0x222233 });
+            moonMesh = new THREE.Mesh(moonGeo, moonMat);
+            moonMesh.position.set(-25, 28, -40);
+            moonMesh.visible = false;
+            scene.add(moonMesh);
+
+            const starGeo = new THREE.BufferGeometry();
+            const starCount = 400;
+            const starPositions = new Float32Array(starCount * 3);
+            for (let i = 0; i < starCount * 3; i += 3) {
+                starPositions[i] = (Math.random() - 0.5) * 120;
+                starPositions[i + 1] = Math.random() * 50 + 5;
+                starPositions[i + 2] = (Math.random() - 0.5) * 120 - 20;
+            }
+            starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0 });
+            starsMesh = new THREE.Points(starGeo, starMat);
+            scene.add(starsMesh);
+
+            cloudGroup = new THREE.Group();
+            const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, transparent: true, opacity: 0.85, flatShading: true });
+            
+            for (let i = 0; i < 8; i++) {
+                const singleCloud = new THREE.Group();
+                const puffCount = 4 + Math.floor(Math.random() * 4);
+                for (let p = 0; p < puffCount; p++) {
+                    const puffSize = 2 + Math.random() * 2;
+                    const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(puffSize, 1), cloudMat);
+                    puff.position.set((p - puffCount/2) * 2.2, (Math.random() - 0.5)*1, (Math.random() - 0.5)*1);
+                    singleCloud.add(puff);
+                }
+                singleCloud.position.set((Math.random() - 0.5) * 70, 16 + Math.random() * 8, -30 + (Math.random() - 0.5) * 20);
+                cloudGroup.add(singleCloud);
+                clouds.push(singleCloud);
+            }
+            scene.add(cloudGroup);
+
+            const rainGeo = new THREE.BufferGeometry();
+            const rainCount = 1000;
+            const rainPositions = new Float32Array(rainCount * 3);
+            for (let i = 0; i < rainCount * 3; i += 3) {
+                rainPositions[i] = (Math.random() - 0.5) * 50;
+                rainPositions[i + 1] = Math.random() * 35;
+                rainPositions[i + 2] = (Math.random() - 0.5) * 40;
+            }
+            rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+            const rainMat = new THREE.PointsMaterial({ color: 0x99bbff, size: 0.15, transparent: true, opacity: 0.65 });
+            rainSystem = new THREE.Points(rainGeo, rainMat);
+            rainSystem.visible = false;
+            scene.add(rainSystem);
+        }
+
+        function toggleTheme() {
+            isNight = !isNight;
+            const btn = document.getElementById('theme-btn');
+            if (isNight) {
+                btn.innerText = "NIGHT";
+                scene.background = skyColors.night;
+                scene.fog.color = skyColors.night;
+                ambientLight.color.setHex(0x1a2b4c);
+                ambientLight.intensity = 0.4;
+                sunLight.intensity = 0.05;
+                sunMesh.visible = false;
+                moonMesh.visible = true;
+                starsMesh.material.opacity = 1;
+                rainSystem.visible = true;
+            } else {
+                btn.innerText = "DAY";
+                scene.background = skyColors.day;
+                scene.fog.color = skyColors.day;
+                ambientLight.color.setHex(0xffffff);
+                ambientLight.intensity = 1.0;
+                sunLight.intensity = 2.2;
+                sunMesh.visible = true;
+                moonMesh.visible = false;
+                starsMesh.material.opacity = 0;
+                rainSystem.visible = false;
+            }
+        }
+
+        function createRealisticMallardDuck() {
+            duckGroup = new THREE.Group();
+
+            const chestMat = new THREE.MeshStandardMaterial({ color: 0x824b2b, roughness: 0.7 });
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 });
+            const headMat = new THREE.MeshStandardMaterial({ color: 0x0f5e33, roughness: 0.25, metalness: 0.6 });
+            const collarMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const beakMat = new THREE.MeshStandardMaterial({ color: 0xed8936, roughness: 0.4 });
+            const wingFeatherMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.6 });
+            const speculumMat = new THREE.MeshStandardMaterial({ color: 0x3182ce, roughness: 0.3, metalness: 0.8 });
+
+            const bodyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), bodyMat);
+            bodyMesh.scale.set(1, 0.9, 1.8);
+            bodyMesh.castShadow = true;
+            duckGroup.add(bodyMesh);
+
+            const chestMesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), chestMat);
+            chestMesh.position.set(0, -0.05, 0.35);
+            chestMesh.scale.set(1, 0.95, 1.1);
+            duckGroup.add(chestMesh);
+
+            const collarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.22, 0.08, 16), collarMat);
+            collarMesh.position.set(0, 0.28, 0.42);
+            collarMesh.rotation.x = 0.3;
+            duckGroup.add(collarMesh);
+
+            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), headMat);
+            headMesh.position.set(0, 0.48, 0.48);
+            headMesh.scale.set(1, 1.1, 1.2);
+            duckGroup.add(headMesh);
+
+            const beakMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.32), beakMat);
+            beakMesh.position.set(0, 0.43, 0.72);
+            beakMesh.rotation.x = -0.1;
+            duckGroup.add(beakMesh);
+
+            duckWingL = new THREE.Group();
+            const wingLeftBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.35), wingFeatherMat);
+            wingLeftBody.position.set(-0.4, 0, 0);
+            const speculumL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.2), speculumMat);
+            speculumL.position.set(-0.4, 0.01, 0.05);
+            duckWingL.add(wingLeftBody, speculumL);
+            duckWingL.position.set(-0.25, 0.15, -0.1);
+            duckGroup.add(duckWingL);
+
+            duckWingR = new THREE.Group();
+            const wingRightBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.35), wingFeatherMat);
+            wingRightBody.position.set(0.4, 0, 0);
+            const speculumR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.2), speculumMat);
+            speculumR.position.set(0.4, 0.01, 0.05);
+            duckWingR.add(wingRightBody, speculumR);
+            duckWingR.position.set(0.25, 0.15, -0.1);
+            duckGroup.add(duckWingR);
+
+            duckGroup.position.set(0, -10, 0);
+            scene.add(duckGroup);
+        }
+
+        function requestFullscreenAndLockLandscape() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        }
+
+        function startGame() {
+            requestFullscreenAndLockLandscape();
+            document.getElementById('overlay-screen').style.opacity = '0';
+            document.getElementById('overlay-screen').style.pointerEvents = 'none';
+            score = 0;
+            ammo = 3;
+            document.getElementById('score-val').innerText = String(score).padStart(6, '0');
+            document.getElementById('ammo-val').innerText = '***';
+            gameStarted = true;
+            spawnDuck();
+        }
+
+        function spawnDuck() {
+            duckActive = true;
+            duckState = 'flying';
+            ammo = 3;
+            document.getElementById('ammo-val').innerText = '***';
+
+            duckX = (Math.random() - 0.5) * 5;
+            duckY = -1.0 + Math.random() * 1.5;
+            duckZ = -5 - Math.random() * 3;
+
+            duckVx = (Math.random() - 0.5) * 0.05;
+            duckVy = 0.02 + Math.random() * 0.025;
+        }
+
+        function setupEvents() {
+            window.addEventListener('mousemove', (e) => {
+                updateCrosshairPosition(e.clientX, e.clientY);
+            });
+
+            window.addEventListener('click', () => {
+                if (!gameStarted || gameOver || !duckActive) return;
+                shoot();
+            });
+
+            const touchSurface = document.getElementById('touch-surface');
+            touchSurface.style.display = 'block';
+
+            touchSurface.addEventListener('touchstart', (e) => {
+                if (!gameStarted || gameOver || !duckActive) return;
+                const touch = e.touches[0];
+                updateCrosshairPosition(touch.clientX, touch.clientY);
+                shoot();
+                e.preventDefault();
+            }, { passive: false });
+
+            touchSurface.addEventListener('touchmove', (e) => {
+                const touch = e.touches[0];
+                updateCrosshairPosition(touch.clientX, touch.clientY);
+                e.preventDefault();
+            }, { passive: false });
+        }
+
+        function updateCrosshairPosition(clientX, clientY) {
+            crosshair.style.left = clientX + 'px';
+            crosshair.style.top = clientY + 'px';
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function shoot() {
+            if (ammo <= 0 || duckState !== 'flying') return;
+            ammo--;
+            document.getElementById('ammo-val').innerText = '*'.repeat(ammo) + '-'.repeat(3 - ammo);
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(duckGroup.children, true);
+
+            if (intersects.length > 0) {
+                duckState = 'hit';
+                score += 500;
+                document.getElementById('score-val').innerText = String(score).padStart(6, '0');
+                fallTimer = 0;
+            } else if (ammo === 0) {
+                duckState = 'escaping';
+            }
+        }
+
+        function update() {
+            if (!gameStarted || gameOver) return;
+
+            clouds.forEach((cloud) => {
+                cloud.position.x += 0.01;
+                if (cloud.position.x > 45) cloud.position.x = -45;
+            });
+
+            const time = Date.now() * 0.003;
+            leafClusters.forEach((cluster, idx) => {
+                cluster.rotation.z = Math.sin(time + idx) * 0.05;
+            });
+
+            if (rainSystem.visible) {
+                const positions = rainSystem.geometry.attributes.position.array;
+                for (let i = 1; i < positions.length; i += 3) {
+                    positions[i] -= 0.9;
+                    if (positions[i] < -3) positions[i] = 35;
+                }
+                rainSystem.geometry.attributes.position.needsUpdate = true;
+            }
+
+            if (duckState === 'flying') {
+                duckX += duckVx;
+                duckY += duckVy;
+
+                const wingTime = Date.now() * 0.025;
+                duckWingL.rotation.z = Math.sin(wingTime) * 0.9;
+                duckWingR.rotation.z = -Math.sin(wingTime) * 0.9;
+
+                if (Math.abs(duckX) > 4.5) duckVx *= -1;
+                if (duckY > 3.0 || duckY < -1.8) duckVy *= -1;
+
+                if (duckY > 3.0) {
+                    duckState = 'escaping';
+                }
+            } else if (duckState === 'hit') {
+                fallTimer++;
+                duckGroup.rotation.z += 0.2;
+                duckY -= 0.1;
+                if (fallTimer > 40 || duckY < -3) {
+                    setTimeout(() => spawnDuck(), 1000);
+                    duckState = 'respawning';
+                    duckGroup.position.set(0, -10, 0);
+                }
+            } else if (duckState === 'escaping') {
+                duckY += 0.15;
+                duckX += duckVx * 2;
+                if (duckY > 6) {
+                    triggerGameOver();
+                }
+            }
+
+            duckGroup.position.set(duckX, duckY, duckZ);
+            duckGroup.rotation.y = duckVx > 0 ? 0.5 : -0.5;
+        }
+
+        function triggerGameOver() {
+            gameOver = true;
+            duckActive = false;
+            const overlay = document.getElementById('overlay-screen');
+            document.getElementById('screen-title').innerText = "GAME OVER";
+            document.getElementById('screen-subtitle').innerText = `FINAL SCORE: ${String(score).padStart(6, '0')}`;
+            overlay.style.opacity = '1';
+            overlay.style.pointerEvents = 'auto';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
